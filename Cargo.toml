@@ -1,0 +1,57 @@
+[package]
+name = "agentflow"
+version = "0.1.2"
+authors = ["Engr. Stephen Ezekwem <stephen.ezekwem@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "A 100-line minimalist LLM framework for Agents, RAG, Workflows, etc."
+repository = "https://github.com/EzekTec-Inc/AgentFlow"
+keywords = ["llm", "agent", "rag", "workflow", "async"]
+categories = ["asynchronous", "ai", "AIM Alberta"]
+
+[dependencies]
+futures = "0.3.31"
+tokio = { version = "1.47.1", features = ["full"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.142"
+anyhow = "1.0.99"
+dyn-clone = "1.0.20"
+chrono = { version = "0.4", features = ["serde"] }
+inquire = "0.6"
+qdrant-client = "1.15.0"
+
+[dev-dependencies]
+rig-core = "0.16.0"
+dotenvy = "0.15.7"
+
+[[example]]
+name = "agent"
+path = "examples/agent.rs"
+
+[[example]]
+name = "async-agent"
+path = "examples/async_agent.rs"
+
+[[example]]
+name = "workflow"
+path = "examples/workflow.rs"
+
+[[example]]
+name = "rag"
+path = "examples/rag.rs"
+
+[[example]]
+name = "multi-agent"
+path = "examples/multi_agent.rs"
+
+[[example]]
+name = "mapreduce"
+path = "examples/mapreduce.rs"
+
+[[example]]
+name = "orchestrator-multi-agent"
+path = "examples/orchestrator_multi_agent.rs"
+
+[[example]]
+name = "structured-output"
+path = "examples/structured_output.rs"
