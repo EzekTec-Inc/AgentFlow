@@ -100,7 +100,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                         value
                     );
                     let client = providers::openai::Client::from_env();
-                    let rig_agent = client.agent("gpt-4.1-mini")
+                    let rig_agent = client.agent("gpt-4o-mini")
                         .preamble("You are a research assistant.")
                         .build();
 
@@ -111,7 +111,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
 
                     println!("Agent 1: Research output:\n{}\n", research);
 
-                    store.lock().unwrap().insert("research".to_string(), Value::String(research));
+                    store.lock().await.insert("research".to_string(), Value::String(research));
                     store
                 }
             })
@@ -122,10 +122,10 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
     let summary_node = create_node(|store: SharedStore| {
         Box::pin(async move {
             println!("Agent 2: Summarizing research with LLM...");
-            let research = store
-                .lock()
-                .unwrap()
-                .get("research")
+            let research = {
+                let guard = store.lock().await;
+                guard.get("research")
+            }
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -135,7 +135,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 research
             );
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-3.5-turbo")
+            let rig_agent = client.agent("gpt-4o-mini")
                 .preamble("You are a summarization expert.")
                 .build();
 
@@ -146,7 +146,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
 
             println!("Agent 2: Summary output:\n{}\n", summary);
 
-            store.lock().unwrap().insert("summary".to_string(), Value::String(summary));
+            store.lock().await.insert("summary".to_string(), Value::String(summary));
             store
         })
     });
@@ -155,10 +155,10 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
     let critique_node = create_node(|store: SharedStore| {
         Box::pin(async move {
             println!("Agent 3: Critiquing summary with LLM...");
-            let summary = store
-                .lock()
-                .unwrap()
-                .get("summary")
+            let summary = {
+                let guard = store.lock().await;
+                guard.get("summary")
+            }
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -168,7 +168,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 summary
             );
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-4.1-mini")
+            let rig_agent = client.agent("gpt-4o-mini")
                 .preamble("You are a critical reviewer.")
                 .build();
 
@@ -179,7 +179,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
 
             println!("Agent 3: Critique output:\n{}\n", critique);
 
-            store.lock().unwrap().insert("critique".to_string(), Value::String(critique));
+            store.lock().await.insert("critique".to_string(), Value::String(critique));
             store
         })
     });
@@ -190,30 +190,30 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
         let topic = topic_clone.clone();
         Box::pin(async move {
             println!("Step 4: Structuring and validating output...");
-            let research = store
-                .lock()
-                .unwrap()
-                .get("research")
+            let research = {
+                let guard = store.lock().await;
+                guard.get("research")
+            }
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let summary = store
-                .lock()
-                .unwrap()
-                .get("summary")
+            let summary = {
+                let guard = store.lock().await;
+                guard.get("summary")
+            }
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let critique = store
-                .lock()
-                .unwrap()
-                .get("critique")
+            let critique = {
+                let guard = store.lock().await;
+                guard.get("critique")
+            }
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
 
             if research.is_empty() || summary.is_empty() || critique.is_empty() {
-                store.lock().unwrap().insert("error".to_string(), Value::String("Missing required fields".to_string()));
+                store.lock().await.insert("error".to_string(), Value::String("Missing required fields".to_string()));
                 return store;
             }
 
@@ -225,7 +225,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 "critique": critique,
                 "timestamp": Utc::now().to_rfc3339(),
             });
-            store.lock().unwrap().insert("structured_output".to_string(), structured.clone());
+            store.lock().await.insert("structured_output".to_string(), structured.clone());
             println!("Step 4: Output structured and validated.\n");
             store
         })
@@ -249,7 +249,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
     let mut store = HashMap::new();
     store.insert("topic".to_string(), Value::String(topic.to_string()));
 
-    let result = match pipeline.generate(Arc::new(Mutex::new(store))).await {
+    let result = match pipeline.generate(std::sync::Arc::new(tokio::sync::Mutex::new(store))).await {
         Ok(result_store) => result_store,
         Err(e) => {
             println!("Validation error: {}", e);
@@ -257,7 +257,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
         }
     };
 
-    let locked = result.lock().unwrap();
+    let locked = result.lock().await;
     if let Some(error) = locked.get("error") {
         println!("=== Pipeline Error ===");
         println!("{}", error);

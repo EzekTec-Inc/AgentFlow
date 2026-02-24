@@ -42,21 +42,20 @@ async fn main() {
     let llm_node = |desc: &'static str| {
         create_node(move |store: SharedStore| {
             Box::pin(async move {
-                // Simulate network/LLM latency
                 sleep(Duration::from_millis(500)).await;
 
-                let prompt = store
-                    .lock()
-                    .unwrap()
-                    .get("prompt")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                let prompt = {
+                    let guard = store.lock().await;
+                    guard
+                        .get("prompt")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                };
 
-                // Use rig-core to call an LLM (OpenAI, etc.)
                 let openai_client = providers::openai::Client::from_env();
                 let rig_agent = openai_client
-                    .agent("gpt-4.1-mini")
+                    .agent("gpt-4o-mini")
                     .preamble(&format!("You are a helpful assistant for {}.", desc))
                     .build();
 
@@ -65,29 +64,24 @@ async fn main() {
                     Err(e) => format!("Error: {}", e),
                 };
 
-                store.lock().unwrap().insert("response".to_string(), Value::String(response));
+                store.lock().await.insert("response".to_string(), Value::String(response));
                 store
             })
         })
     };
 
-    // Emmitting the prompts used
     println!("Agent 1 (poetry) prompt: {}\n", &store1.get("prompt").unwrap());
     println!("Agent 2 (summarization) prompt: {}\n", &store2.get("prompt").unwrap());
     println!("====================================================================\n");
 
-    // Wrap each node in an Agent
     let agent1 = Agent::with_retry(llm_node("poetry"), 2, 500);
     let agent2 = Agent::with_retry(llm_node("summarization"), 2, 500);
 
-    // Run both agents concurrently (showcasing async power)
     let fut1 = agent1.decide(store1);
     let fut2 = agent2.decide(store2);
 
-
     let (result1, result2) = tokio::join!(fut1, fut2);
 
-    // Print results
     println!("Agent 1 (poetry) response:\n{}\n", result1.get("response").unwrap_or(&Value::Null));
     println!("Agent 2 (summarization) response:\n{}\n", result2.get("response").unwrap_or(&Value::Null));
 }

@@ -59,7 +59,7 @@ async fn main() {
                         value
                     );
                     let client = providers::openai::Client::from_env();
-                    let rig_agent = client.agent("gpt-4.1-mini")
+                    let rig_agent = client.agent("gpt-4o-mini")
                         .preamble("You are a diligent land registry search officer.")
                         .build();
 
@@ -68,8 +68,8 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().unwrap().insert("title_search".to_string(), Value::String(response));
-                    store.lock().unwrap().insert("action".to_string(), Value::String("default".to_string()));
+                    store.lock().await.insert("title_search".to_string(), Value::String(response));
+                    store.lock().await.insert("action".to_string(), Value::String("default".to_string()));
                     store
                 }
             })
@@ -85,10 +85,10 @@ async fn main() {
                 let applicant_name = applicant_name.clone();
                 let property_desc = property_desc.clone();
                 async move {
-                    let search_result = store
-                        .lock()
-                        .unwrap()
-                        .get("title_search")
+                    let search_result = {
+                let guard = store.lock().await;
+                guard.get("title_search")
+            }
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .to_string();
@@ -98,7 +98,7 @@ async fn main() {
                         search_result, applicant_name, property_desc
                     );
                     let client = providers::openai::Client::from_env();
-                    let rig_agent = client.agent("gpt-3.5-turbo")
+                    let rig_agent = client.agent("gpt-4o-mini")
                         .preamble("You are a land registry officer specializing in title issuance.")
                         .build();
 
@@ -107,8 +107,8 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().unwrap().insert("title_issuance".to_string(), Value::String(response));
-                    store.lock().unwrap().insert("action".to_string(), Value::String("default".to_string()));
+                    store.lock().await.insert("title_issuance".to_string(), Value::String(response));
+                    store.lock().await.insert("action".to_string(), Value::String("default".to_string()));
                     store
                 }
             })
@@ -118,10 +118,10 @@ async fn main() {
     // Step 3: Legal Review Agent (LLM)
     let legal_review_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let issuance = store
-                .lock()
-                .unwrap()
-                .get("title_issuance")
+            let issuance = {
+                let guard = store.lock().await;
+                guard.get("title_issuance")
+            }
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -131,7 +131,7 @@ async fn main() {
                 issuance
             );
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-3.5-turbo")
+            let rig_agent = client.agent("gpt-4o-mini")
                 .preamble("You are a legal officer specializing in land title review.")
                 .build();
 
@@ -140,8 +140,8 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            store.lock().unwrap().insert("legal_review".to_string(), Value::String(response));
-            store.lock().unwrap().insert("action".to_string(), Value::String("default".to_string()));
+            store.lock().await.insert("legal_review".to_string(), Value::String(response));
+            store.lock().await.insert("action".to_string(), Value::String("default".to_string()));
             store
         })
     });
@@ -154,7 +154,7 @@ async fn main() {
     workflow.connect("title_search", "title_issuance");
     workflow.connect("title_issuance", "legal_review");
 
-    let store = Arc::new(Mutex::new(HashMap::new()));
+    let store = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
     let mut current_step = Some("title_search".to_string());
     let mut last_result = store.clone();
 
@@ -164,14 +164,14 @@ async fn main() {
         let result = node.call(last_result.clone()).await;
 
         // Present result to user and get action
-        let locked = result.lock().unwrap();
+        let locked = result.lock().await;
         let step_result = locked.get(&step).cloned().unwrap_or(serde_json::Value::Null);
         drop(locked);
 
         // Show the result of the last processing before HITL interaction
         let user_action = prompt_user(&step, &step_result);
 
-        let mut locked = result.lock().unwrap();
+        let mut locked = result.lock().await;
         match user_action.as_str() {
             "a" | "approve" => {
                 locked.insert("action".to_string(), Value::String("default".to_string()));
@@ -202,7 +202,7 @@ async fn main() {
     }
 
     println!("Workflow complete. Final result:");
-    let locked = last_result.lock().unwrap();
+    let locked = last_result.lock().await;
     for (k, v) in locked.iter() {
         println!("{}: {}", k, v);
     }

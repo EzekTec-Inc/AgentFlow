@@ -41,21 +41,20 @@ async fn main() {
 
     println!("[rig-core prompt]: \n{}\n", example_prompt);
 
-    // Create a rig-core powered LLM node
     let agent_node = create_node(move |store: SharedStore| {
         Box::pin(async move {
-            let prompt = store
-                .lock()
-                .unwrap()
-                .get("prompt")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let prompt = {
+                let guard = store.lock().await;
+                guard
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
 
-            // Create OpenAI client and agent
             let openai_client = providers::openai::Client::from_env();
             let rig_agent = openai_client
-                .agent("gpt-4.1-mini")
+                .agent("gpt-4o-mini")
                 .preamble(r#"You are a helpful assistant who is very skilled at writing poetry."#)
                 .build();
 
@@ -64,29 +63,29 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            store
-                .lock()
-                .unwrap()
-                .insert("response".to_string(), Value::String(response));
+            store.lock().await.insert("response".to_string(), Value::String(response));
             store
         })
     });
 
-    // Demonstrate retry logic (e.g., 3 tries, 1000ms between)
     let agent = Agent::with_retry(agent_node, 3, 1000);
 
-    // Use the ergonomic decide method (HashMap in, HashMap out)
     let result = agent.decide(store.clone()).await;
 
     if let Some(response) = result.get("response").and_then(|v| v.as_str()) {
         println!("[rig-core response]: \n{}\n", response);
     }
 
-    // Optionally, show direct call usage (SharedStore in, SharedStore out)
-    let shared_store = std::sync::Arc::new(std::sync::Mutex::new(store));
+    let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(store));
     let result_store = agent.call(shared_store).await;
     let result_map = std::sync::Arc::try_unwrap(result_store)
-        .map_or_else(|arc| arc.lock().unwrap().clone(), |mutex| mutex.into_inner().unwrap());
+        .map_or_else(
+            |arc| {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async { arc.lock().await.clone() })
+            },
+            |mutex| mutex.into_inner()
+        );
 
     if let Some(response) = result_map.get("response").and_then(|v| v.as_str()) {
         println!("[direct call response]: \n{}\n", response);

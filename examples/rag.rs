@@ -39,13 +39,14 @@ async fn main() {
     // Retriever: Use rig to synthesize context
     let retriever = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let query = store
-                .lock()
-                .unwrap()
-                .get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let query = {
+                let guard = store.lock().await;
+                guard
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
 
             let retrieval_prompt = format!(
                 "You are a search assistant. Given the user query: '{}', retrieve or synthesize a concise context from your knowledge base or the web that would help answer the question.",
@@ -55,7 +56,7 @@ async fn main() {
             println!("Retrieval prompt:\n{}\n", retrieval_prompt);
 
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-4.1-mini")
+            let rig_agent = client.agent("gpt-4o-mini")
                 .preamble("You are a helpful retrieval agent.")
                 .build();
 
@@ -66,39 +67,38 @@ async fn main() {
 
             println!("Retrieved context:\n{}\n", context);
 
-            store.lock().unwrap().insert("context".to_string(), Value::String(context));
+            store.lock().await.insert("context".to_string(), Value::String(context));
             store
         })
     });
 
-    // Generator: Use rig to generate an answer based on the retrieved context
     let generator = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let query = store
-                .lock()
-                .unwrap()
-                .get("query")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let context = store
-                .lock()
-                .unwrap()
-                .get("context")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+            let (query, context) = {
+                let guard = store.lock().await;
+                let query = guard
+                    .get("query")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let context = guard
+                    .get("context")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                (query, context)
+            };
 
             let generation_prompt = format!(
-                "You are an expert assistant. Given the user query: '{}', and the following context:\n{}\n\nGenerate a clear, concise, and accurate answer for the user.",
-                query, context
+                "You are an AI assistant. Using the following context:\n\n{}\n\nAnswer the user's query: '{}'",
+                context, query
             );
-            println!("[Generator Phase]");
+            println!("\n[Generator Phase]");
             println!("Generation prompt:\n{}\n", generation_prompt);
 
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-3.5-turbo")
-                .preamble("You are an expert answer generator.")
+            let rig_agent = client.agent("gpt-4o-mini")
+                .preamble("You are a helpful answering agent.")
                 .build();
 
             let response = match rig_agent.prompt(&generation_prompt).await {
@@ -106,26 +106,22 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            println!("Generated answer:\n{}\n", response);
+            println!("Generated response:\n{}\n", response);
 
-            store.lock().unwrap().insert("response".to_string(), Value::String(response));
+            store.lock().await.insert("response".to_string(), Value::String(response));
             store
         })
     });
 
-    // Compose the RAG pipeline
     let rag = Rag::new(retriever, generator);
+    let result = rag.call(std::sync::Arc::new(tokio::sync::Mutex::new(store))).await;
 
-    // Run the RAG pipeline
-    let result = rag.call(Arc::new(Mutex::new(store))).await;
-    let locked = result.lock().unwrap();
+    let result_map = {
+        let guard = result.lock().await;
+        guard.clone()
+    };
 
-    println!("=== RAG Flow Complete ===");
-    println!("User Query: {}", user_query);
-    if let Some(context) = locked.get("context").and_then(|v| v.as_str()) {
-        println!("\n[Final Retrieved Context]\n{}", context);
-    }
-    if let Some(response) = locked.get("response").and_then(|v| v.as_str()) {
-        println!("\n[Final Generated Answer]\n{}", response);
+    if let Some(response) = result_map.get("response") {
+        println!("\n[Final RAG Response]:\n{}", response);
     }
 }

@@ -47,7 +47,7 @@ async fn main() {
                 async move {
                     let openai_client = providers::openai::Client::from_env();
                     let rig_agent = openai_client
-                        .agent("gpt-4.1-mini")
+                        .agent("gpt-4o-mini")
                         .preamble("You are a senior TypeScript game developer.")
                         .build();
 
@@ -56,7 +56,7 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().unwrap().insert(
+                    store.lock().await.insert(
                         "typescript".to_string(),
                         Value::String(response),
                     );
@@ -78,7 +78,7 @@ async fn main() {
                 async move {
                     let openai_client = providers::openai::Client::from_env();
                     let rig_agent = openai_client
-                        .agent("gpt-3.5-turbo")
+                        .agent("gpt-4o-mini")
                         .preamble("You are a senior frontend developer specializing in HTML.")
                         .build();
 
@@ -87,7 +87,7 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().unwrap().insert(
+                    store.lock().await.insert(
                         "html".to_string(),
                         Value::String(response),
                     );
@@ -118,7 +118,7 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().unwrap().insert(
+                    store.lock().await.insert(
                         "tailwindcss".to_string(),
                         Value::String(response),
                     );
@@ -134,8 +134,7 @@ async fn main() {
     multi_agent.add_agent(agent2);
     multi_agent.add_agent(agent3);
 
-    // Prepare the shared store
-    let store = Arc::new(Mutex::new(HashMap::new()));
+    let store = HashMap::new();
 
     // Show progress to the user while agents are working
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -160,14 +159,14 @@ async fn main() {
     });
 
     // Run all agents concurrently
-    let result = multi_agent.run(store).await;
+    let result = multi_agent.run(std::sync::Arc::new(tokio::sync::Mutex::new(store))).await;
 
     // Stop the progress thread
     running.store(false, Ordering::SeqCst);
     progress_handle.join().ok();
 
     // Print the results from each agent
-    let result_map = result.lock().unwrap();
+    let result_map = result;
     println!("=== Space Invader Game Artifacts ===\n");
     if let Some(ts) = result_map.get("typescript") {
         println!("--- TypeScript Game Logic ---\n{}\n", ts);

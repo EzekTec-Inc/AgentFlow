@@ -40,10 +40,10 @@ fn llm_agent_node(
     let preamble = preamble.to_string();
     let output_key = output_key.to_string();
     create_node(move |store: SharedStore| {
-        let prompt = store
-            .lock()
-            .unwrap()
-            .get(prompt_key)
+        let prompt = {
+                let guard = store.lock().await;
+                guard.get(prompt_key)
+            }
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -63,7 +63,7 @@ fn llm_agent_node(
                     Err(e) => format!("Error: {}", e),
                 };
 
-                store.lock().unwrap().insert(output_key.clone(), Value::String(response));
+                store.lock().await.insert(output_key.clone(), Value::String(response));
                 println!("Completed phase: {}", output_key);
                 store
             }
@@ -86,7 +86,7 @@ async fn main() {
 
     // Research node: generates facts
     let research_node = llm_agent_node(
-        "gpt-4.1-mini",
+        "gpt-4o-mini",
         "You are a research assistant.",
         "research_prompt",
         "research_facts"
@@ -98,10 +98,10 @@ async fn main() {
             println!("Starting phase: code");
             sleep(Duration::from_millis(500)).await;
 
-            let facts = store
-                .lock()
-                .unwrap()
-                .get("research_facts")
+            let facts = {
+                let guard = store.lock().await;
+                guard.get("research_facts")
+            }
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -113,7 +113,7 @@ async fn main() {
 
             let client = providers::openai::Client::from_env();
             let rig_agent = client
-                .agent("gpt-3.5-turbo")
+                .agent("gpt-4o-mini")
                 .preamble("You are a senior TypeScript developer.")
                 .build();
 
@@ -122,7 +122,7 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            store.lock().unwrap().insert("typescript_code".to_string(), Value::String(response));
+            store.lock().await.insert("typescript_code".to_string(), Value::String(response));
             println!("Completed phase: code");
             store
         })
@@ -134,10 +134,10 @@ async fn main() {
             println!("Starting phase: review");
             sleep(Duration::from_millis(500)).await;
 
-            let code = store
-                .lock()
-                .unwrap()
-                .get("typescript_code")
+            let code = {
+                let guard = store.lock().await;
+                guard.get("typescript_code")
+            }
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
@@ -149,7 +149,7 @@ async fn main() {
 
             let client = providers::openai::Client::from_env();
             let rig_agent = client
-                .agent("gpt-3.5-turbo")
+                .agent("gpt-4o-mini")
                 .preamble("You are a code reviewer.")
                 .build();
 
@@ -158,7 +158,7 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            store.lock().unwrap().insert("review".to_string(), Value::String(response));
+            store.lock().await.insert("review".to_string(), Value::String(response));
             println!("Completed phase: review");
             store
         })
@@ -174,15 +174,24 @@ async fn main() {
 
             // Research phase
             let store = research_node.call(store).await;
-            let facts = store.lock().unwrap().get("research_facts").cloned();
+            let facts = {
+                let guard = store.lock().await;
+                guard.get("research_facts")
+            }.cloned();
 
             // Code phase
             let store = code_node.call(store).await;
-            let code = store.lock().unwrap().get("typescript_code").cloned();
+            let code = {
+                let guard = store.lock().await;
+                guard.get("typescript_code")
+            }.cloned();
 
             // Review phase
             let store = review_node.call(store).await;
-            let review = store.lock().unwrap().get("review").cloned();
+            let review = {
+                let guard = store.lock().await;
+                guard.get("review")
+            }.cloned();
 
             // Aggregate results
             if let Some(Value::String(f)) = facts {
@@ -196,7 +205,7 @@ async fn main() {
             }
             report.push_str("✅ All phases complete.");
 
-            store.lock().unwrap().insert("report".to_string(), Value::String(report));
+            store.lock().await.insert("report".to_string(), Value::String(report));
             store
         })
     });
