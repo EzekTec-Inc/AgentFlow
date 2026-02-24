@@ -87,11 +87,12 @@ async fn main() {
                 async move {
                     let search_result = {
                 let guard = store.lock().await;
-                guard.get("title_search")
-            }
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
+                guard
+                    .get("title_search")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
 
                     let prompt = format!(
                         "You are a land registry officer. Based on the following title search result:\n{}\n\nPrepare a draft land title issuance for applicant '{}', property '{}'. Include all relevant legal language and conditions.",
@@ -118,17 +119,18 @@ async fn main() {
     // Step 3: Legal Review Agent (LLM)
     let legal_review_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let issuance = {
+            let title_issuance = {
                 let guard = store.lock().await;
-                guard.get("title_issuance")
-            }
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+                guard
+                    .get("title_issuance")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
 
             let prompt = format!(
                 "You are a legal officer. Review the following draft land title issuance for legal sufficiency, compliance, and clarity. Suggest any corrections or improvements.\n\n{}",
-                issuance
+                title_issuance
             );
             let client = providers::openai::Client::from_env();
             let rig_agent = client.agent("gpt-4o-mini")

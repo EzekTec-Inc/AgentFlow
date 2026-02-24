@@ -165,8 +165,10 @@ async fn main() {
     running.store(false, Ordering::SeqCst);
     progress_handle.join().ok();
 
-    // Print the results from each agent
-    let result_map = result;
+    let result_map = {
+        let guard = result.lock().await;
+        guard.clone()
+    };
     println!("=== Space Invader Game Artifacts ===\n");
     if let Some(ts) = result_map.get("typescript") {
         println!("--- TypeScript Game Logic ---\n{}\n", ts);
