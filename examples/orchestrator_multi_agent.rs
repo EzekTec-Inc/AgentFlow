@@ -40,18 +40,20 @@ fn llm_agent_node(
     let preamble = preamble.to_string();
     let output_key = output_key.to_string();
     create_node(move |store: SharedStore| {
-        let prompt = {
-                let guard = store.lock().await;
-                guard.get(prompt_key)
-            }
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
         Box::pin({
             let model = model.clone();
             let preamble = preamble.clone();
             let output_key = output_key.clone();
             async move {
+                let prompt = {
+                    let guard = store.lock().await;
+                    guard
+                        .get(prompt_key)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                };
+
                 println!("Starting phase: {}", output_key);
                 sleep(Duration::from_millis(500)).await;
 

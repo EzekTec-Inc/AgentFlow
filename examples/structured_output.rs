@@ -124,9 +124,9 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
             println!("Agent 2: Summarizing research with LLM...");
             let research = {
                 let guard = store.lock().await;
-                guard.get("research")
-            }
-                .and_then(|v| v.as_str())
+                guard
+                    .get("research")
+                    .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
 
@@ -157,9 +157,9 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
             println!("Agent 3: Critiquing summary with LLM...");
             let summary = {
                 let guard = store.lock().await;
-                guard.get("summary")
-            }
-                .and_then(|v| v.as_str())
+                guard
+                    .get("summary")
+                    .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
 
@@ -192,23 +192,23 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
             println!("Step 4: Structuring and validating output...");
             let research = {
                 let guard = store.lock().await;
-                guard.get("research")
-            }
-                .and_then(|v| v.as_str())
+                guard
+                    .get("research")
+                    .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
             let summary = {
                 let guard = store.lock().await;
-                guard.get("summary")
-            }
-                .and_then(|v| v.as_str())
+                guard
+                    .get("summary")
+                    .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
             let critique = {
                 let guard = store.lock().await;
-                guard.get("critique")
-            }
-                .and_then(|v| v.as_str())
+                guard
+                    .get("critique")
+                    .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
 
