@@ -20,13 +20,12 @@ impl BatchFlow {
         for params in batch_params {
             let mut wf = self.workflow.clone();
             wf.set_params(params);
-            // Merge params into shared store
-            let mut store = shared.lock().unwrap();
-            for (k, v) in wf.params.iter() {
-                store.entry(k.clone()).or_insert(v.clone());
+            {
+                let mut store = shared.lock().await;
+                for (k, v) in wf.params.iter() {
+                    store.entry(k.clone()).or_insert(v.clone());
+                }
             }
-            drop(store);
-            // Run the workflow
             let _ = wf.call(shared.clone()).await;
         }
         shared

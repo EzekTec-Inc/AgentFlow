@@ -16,10 +16,14 @@ pub trait Node<I, O>: Send + Sync + DynClone {
 }
 dyn_clone::clone_trait_object!(<I, O> Node<I, O>);
 
-/// Simple node that works with SharedStore
-pub type SimpleNode = Box<dyn Node<SharedStore, SharedStore>>;
+pub trait NodeResult<I, O>: Send + Sync + DynClone {
+    fn call(&self, input: I) -> Pin<Box<dyn Future<Output = Result<O, anyhow::Error>> + Send + '_>>;
+}
+dyn_clone::clone_trait_object!(<I, O> NodeResult<I, O>);
 
-/// Helper function to create a simple node
+pub type SimpleNode = Box<dyn Node<SharedStore, SharedStore>>;
+pub type ResultNode = Box<dyn NodeResult<SharedStore, SharedStore>>;
+
 pub fn create_node<F, Fut>(func: F) -> SimpleNode
 where
     F: Fn(SharedStore) -> Fut + Send + Sync + Clone + 'static,
@@ -39,6 +43,27 @@ where
     }
 
     Box::new(FuncNode(func))
+}
+
+pub fn create_result_node<F, Fut>(func: F) -> ResultNode
+where
+    F: Fn(SharedStore) -> Fut + Send + Sync + Clone + 'static,
+    Fut: Future<Output = Result<SharedStore, anyhow::Error>> + Send + 'static,
+{
+    #[derive(Clone)]
+    struct ResultFuncNode<F>(F);
+
+    impl<F, Fut> NodeResult<SharedStore, SharedStore> for ResultFuncNode<F>
+    where
+        F: Fn(SharedStore) -> Fut + Send + Sync + Clone,
+        Fut: Future<Output = Result<SharedStore, anyhow::Error>> + Send + 'static,
+    {
+        fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = Result<SharedStore, anyhow::Error>> + Send + '_>> {
+            Box::pin(self.0(input))
+        }
+    }
+
+    Box::new(ResultFuncNode(func))
 }
 
 /// Helper to create a node with built-in retry/fallback logic and prep/exec/post pipeline.
