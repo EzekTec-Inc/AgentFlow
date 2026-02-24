@@ -247,6 +247,103 @@ flowchart LR
 
 ---
 
+## 🚀 Advanced Features
+
+### NodeResult - Result-Based Error Handling
+
+For nodes that need explicit error handling, use `NodeResult` trait with `Result` return types:
+
+```rust
+use agentflow::prelude::*;
+use anyhow::Result;
+
+let fallible_node = create_result_node(|store: SharedStore| {
+    Box::pin(async move {
+        let data = store.lock().await;
+        if data.contains_key("error_trigger") {
+            return Err(anyhow::anyhow!("Operation failed"));
+        }
+        drop(data);
+
+        store.lock().await.insert("result".to_string(), "success".into());
+        Ok(store)
+    })
+});
+```
+
+**Key differences:**
+- `create_result_node()` - Returns `ResultNode` that produces `Result<SharedStore, anyhow::Error>`
+- `create_node()` - Returns `SimpleNode` that produces `SharedStore` (infallible)
+
+### MultiAgent MergeStrategy
+
+Control how multiple agents combine their results with different merge strategies:
+
+```rust
+use agentflow::prelude::*;
+
+// Strategy 1: SharedStore (default) - All agents modify the same store
+let mut multi = MultiAgent::new();
+multi.add_agent(agent1);
+multi.add_agent(agent2);
+
+// Strategy 2: Namespaced - Each agent's results get prefixed (agent_0.*, agent_1.*)
+let mut multi = MultiAgent::with_strategy(MergeStrategy::Namespaced);
+multi.add_agent(agent1);
+multi.add_agent(agent2);
+
+// Strategy 3: Custom - Provide your own merge function
+fn custom_merge(results: Vec<SharedStore>) -> SharedStore {
+    // Your custom merging logic
+    results[0].clone()
+}
+let mut multi = MultiAgent::with_strategy(MergeStrategy::Custom(custom_merge));
+```
+
+**Available strategies:**
+- `MergeStrategy::SharedStore` - All agents share and modify the same store concurrently
+- `MergeStrategy::Namespaced` - Results are merged with agent-specific prefixes
+- `MergeStrategy::Custom(fn)` - Provide a custom merge function
+
+### Typed Store Wrapper
+
+For type-safe store access, use the `Store` wrapper with typed helper methods:
+
+```rust
+use agentflow::prelude::*;
+
+let store = Store::new();
+
+// Typed setters
+store.set_string("name", "Alice").await;
+store.set_i64("age", 30).await;
+store.set_bool("active", true).await;
+
+// Typed getters (return Option<T>)
+let name = store.get_string("name").await; // Option<String>
+let age = store.get_i64("age").await;       // Option<i64>
+
+// Required getters (return Result<T, String>)
+let name = store.require_string("name").await?; // Result<String, String>
+let age = store.require_i64("age").await?;       // Result<i64, String>
+
+// Utility methods
+let has_key = store.contains_key("name").await;
+let keys = store.keys().await;
+let len = store.len().await;
+
+// Convert to/from SharedStore
+let shared = store.into_shared(); // Store -> SharedStore
+let store = Store::from_shared(shared); // SharedStore -> Store
+```
+
+**Benefits:**
+- Type-safe access with `get_string()`, `get_i64()`, `get_f64()`, `get_bool()`
+- Enforced validation with `require_*()` methods
+- Cleaner API surface without manual JSON type checking
+
+---
+
 ## 🛠️ Extending PocketFlow
 
 - **Add new agent types**: Implement the `Node` trait.
