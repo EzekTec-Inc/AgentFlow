@@ -19,17 +19,16 @@ impl<N> Agent<N> {
         Self { node, max_retries, wait_millis }
     }
 
-    /// Single decide method that works for all cases, with retry/fallback logic
     pub async fn decide(&self, input: std::collections::HashMap<String, serde_json::Value>) -> std::collections::HashMap<String, serde_json::Value>
     where
         N: Node<SharedStore, SharedStore> + Clone,
     {
-        let shared_store = std::sync::Arc::new(std::sync::Mutex::new(input));
+        let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(input));
         let mut result_store = None;
         for attempt in 0..self.max_retries {
             let res = self.node.call(shared_store.clone()).await;
             let has_error = {
-                let store = res.lock().unwrap();
+                let store = res.lock().await;
                 store.contains_key("error")
             };
             if !has_error {
@@ -43,7 +42,13 @@ impl<N> Agent<N> {
         }
         let result_store = result_store.unwrap_or(shared_store);
         std::sync::Arc::try_unwrap(result_store)
-            .map_or_else(|arc| arc.lock().unwrap().clone(), |mutex| mutex.into_inner().unwrap())
+            .map_or_else(
+                |arc| {
+                    let rt = tokio::runtime::Handle::current();
+                    rt.block_on(async { arc.lock().await.clone() })
+                },
+                |mutex| mutex.into_inner()
+            )
     }
 }
 

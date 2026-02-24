@@ -261,6 +261,32 @@ flowchart LR
 - **Async-first**: Designed for async/await and concurrent execution.
 - **Minimalist**: Focus on core abstractions, not vendor lock-in.
 
+## ⚠️ Async Safety Guidelines
+
+AgentFlow uses `tokio::sync::Mutex` for thread-safe shared state. To prevent deadlocks and blocking the async runtime:
+
+- **Never hold a lock across `.await` points**: Always drop the lock guard before any async operation.
+
+**Bad Example:**
+```rust
+let mut store = shared_store.lock().await;
+store.insert("key".to_string(), value);
+some_async_function().await; // ❌ Lock held across await!
+```
+
+**Good Example:**
+```rust
+{
+    let mut store = shared_store.lock().await;
+    store.insert("key".to_string(), value);
+} // Lock dropped here
+some_async_function().await; // ✅ Safe
+```
+
+- Locks are acquired with `.lock().await` (async)
+- Always scope lock guards in blocks `{}` to ensure they're dropped early
+- Read the data you need, drop the lock, then perform async operations
+
 ---
 
 ## 📦 References

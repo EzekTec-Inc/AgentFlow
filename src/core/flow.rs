@@ -55,25 +55,23 @@ impl Flow {
         while let Some(node) = self.nodes.get(&current_node_name) {
             store = node.call(store).await;
 
-            // Determine next node based on action
-            let action = store
-                .lock()
-                .unwrap()
-                .get("action")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| "default".to_string());
+            let action = {
+                let guard = store.lock().await;
+                guard
+                    .get("action")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "default".to_string())
+            };
 
             if let Some(next_node) = self.edges.get(&current_node_name).and_then(|edges| edges.get(&action)) {
                 current_node_name = next_node.clone();
             } else {
-                // No more edges for this action, flow is complete.
                 break;
             }
         }
 
-        // Remove action from final store
-        store.lock().unwrap().remove("action");
+        store.lock().await.remove("action");
         store
     }
 

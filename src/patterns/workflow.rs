@@ -51,10 +51,16 @@ impl Workflow {
         for (k, v) in &self.params {
             store.entry(k.clone()).or_insert(v.clone());
         }
-        let shared_store = std::sync::Arc::new(std::sync::Mutex::new(store));
+        let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(store));
         let result_store = self.flow.run(shared_store).await;
         std::sync::Arc::try_unwrap(result_store)
-            .map_or_else(|arc| arc.lock().unwrap().clone(), |mutex| mutex.into_inner().unwrap())
+            .map_or_else(
+                |arc| {
+                    let rt = tokio::runtime::Handle::current();
+                    rt.block_on(async { arc.lock().await.clone() })
+                },
+                |mutex| mutex.into_inner()
+            )
     }
 
     /// Get a node by step name
@@ -83,7 +89,7 @@ impl Node<SharedStore, SharedStore> for Workflow {
         let params = self.params.clone();
         Box::pin(async move {
             {
-                let mut store = input.lock().unwrap();
+                let mut store = input.lock().await;
                 for (k, v) in &params {
                     store.entry(k.clone()).or_insert(v.clone());
                 }

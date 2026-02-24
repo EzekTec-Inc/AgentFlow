@@ -2,13 +2,13 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use dyn_clone::DynClone;
 
 /// Shared store for communication between nodes
-pub type SharedStore = Arc<Mutex<HashMap<String, Value>>>;
+pub type SharedStore = Arc<tokio::sync::Mutex<HashMap<String, Value>>>;
 
 /// Core Node trait - handles simple (LLM) tasks
 pub trait Node<I, O>: Send + Sync + DynClone {
