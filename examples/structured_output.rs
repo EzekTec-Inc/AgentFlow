@@ -189,7 +189,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
     let structured_node = create_node(move |store: SharedStore| {
         let topic = topic_clone.clone();
         Box::pin(async move {
-            println!("Step 4: Structuring output...");
+            println!("Step 4: Structuring and validating output...");
             let research = store
                 .lock()
                 .unwrap()
@@ -212,6 +212,11 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 .unwrap_or("")
                 .to_string();
 
+            if research.is_empty() || summary.is_empty() || critique.is_empty() {
+                store.lock().unwrap().insert("error".to_string(), Value::String("Missing required fields".to_string()));
+                return store;
+            }
+
             let structured = serde_json::json!({
                 "status": "success",
                 "topic": topic,
@@ -221,35 +226,43 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 "timestamp": Utc::now().to_rfc3339(),
             });
             store.lock().unwrap().insert("structured_output".to_string(), structured.clone());
-            println!("Step 4: Output structured.\n");
+            println!("Step 4: Output structured and validated.\n");
             store
         })
     });
 
-    // Compose the pipeline
-    let pipeline = StructuredOutput::new(
-        create_node(move |store: SharedStore| {
-            let research_node = research_node.clone();
-            let summary_node = summary_node.clone();
-            let critique_node = critique_node.clone();
-            let structured_node = structured_node.clone();
-            Box::pin(async move {
-                let store = research_node.call(store).await;
-                let store = summary_node.call(store).await;
-                let store = critique_node.call(store).await;
-                structured_node.call(store).await
-            })
+    let pipeline_node = create_node(move |store: SharedStore| {
+        let research_node = research_node.clone();
+        let summary_node = summary_node.clone();
+        let critique_node = critique_node.clone();
+        let structured_node = structured_node.clone();
+        Box::pin(async move {
+            let store = research_node.call(store).await;
+            let store = summary_node.call(store).await;
+            let store = critique_node.call(store).await;
+            structured_node.call(store).await
         })
-    );
+    });
 
-    // Run the pipeline
+    let pipeline = StructuredOutput::new(pipeline_node);
+
     let mut store = HashMap::new();
     store.insert("topic".to_string(), Value::String(topic.to_string()));
-    let result = pipeline.call(Arc::new(Mutex::new(store))).await;
 
-    // Display the final structured output
+    let result = match pipeline.generate(Arc::new(Mutex::new(store))).await {
+        Ok(result_store) => result_store,
+        Err(e) => {
+            println!("Validation error: {}", e);
+            return None;
+        }
+    };
+
     let locked = result.lock().unwrap();
-    if let Some(structured) = locked.get("structured_output") {
+    if let Some(error) = locked.get("error") {
+        println!("=== Pipeline Error ===");
+        println!("{}", error);
+        None
+    } else if let Some(structured) = locked.get("structured_output") {
         println!("=== Structured Output ===");
         println!("{}", serde_json::to_string_pretty(structured).unwrap());
         Some(structured.clone())

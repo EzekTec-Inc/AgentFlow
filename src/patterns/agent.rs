@@ -26,12 +26,20 @@ impl<N> Agent<N> {
     {
         let shared_store = std::sync::Arc::new(std::sync::Mutex::new(input));
         let mut result_store = None;
-        for _ in 0..self.max_retries {
+        for attempt in 0..self.max_retries {
             let res = self.node.call(shared_store.clone()).await;
-            // If you want to check for error, you must encode error in the store
-            // Here, we just break after first run, but you could check for error keys
-            result_store = Some(res.clone());
-            break;
+            let has_error = {
+                let store = res.lock().unwrap();
+                store.contains_key("error")
+            };
+            if !has_error {
+                result_store = Some(res);
+                break;
+            }
+            result_store = Some(res);
+            if attempt < self.max_retries - 1 && self.wait_millis > 0 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(self.wait_millis)).await;
+            }
         }
         let result_store = result_store.unwrap_or(shared_store);
         std::sync::Arc::try_unwrap(result_store)

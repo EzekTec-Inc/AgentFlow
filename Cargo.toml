@@ -21,7 +21,7 @@ inquire = "0.6"
 qdrant-client = "1.15.0"
 
 [dev-dependencies]
-rig-core = "0.16.0"
+rig = { package = "rig-core", version = "0.16.0" }
 dotenvy = "0.15.7"
 
 [[example]]
