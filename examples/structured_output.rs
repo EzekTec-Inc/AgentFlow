@@ -127,8 +127,9 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 guard
                     .get("research")
                     .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+                    .unwrap_or("")
+                    .to_string()
+            };
 
             let prompt = format!(
                 "You are a summarization expert. Summarize the following research into a concise paragraph:\n{}",
@@ -160,8 +161,9 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 guard
                     .get("summary")
                     .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+                    .unwrap_or("")
+                    .to_string()
+            };
 
             let prompt = format!(
                 "You are a critical reviewer. Critique the following summary for accuracy, clarity, and completeness. Suggest improvements if needed.\n{}",
@@ -190,27 +192,25 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
         let topic = topic_clone.clone();
         Box::pin(async move {
             println!("Step 4: Structuring and validating output...");
-            let research = {
+            let (research, summary, critique) = {
                 let guard = store.lock().await;
-                guard
+                let research = guard
                     .get("research")
                     .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let summary = {
-                let guard = store.lock().await;
-                guard
+                    .unwrap_or("")
+                    .to_string();
+                let summary = guard
                     .get("summary")
                     .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let critique = {
-                let guard = store.lock().await;
-                guard
+                    .unwrap_or("")
+                    .to_string();
+                let critique = guard
                     .get("critique")
                     .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+                    .unwrap_or("")
+                    .to_string();
+                (research, summary, critique)
+            };
 
             if research.is_empty() || summary.is_empty() || critique.is_empty() {
                 store.lock().await.insert("error".to_string(), Value::String("Missing required fields".to_string()));
