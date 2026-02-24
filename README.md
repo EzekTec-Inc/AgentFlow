@@ -135,19 +135,21 @@ flowchart LR
     Step2 -- reads/writes --> Store2[SharedStore]
 ```
 
+**Note:** The `"action"` key is reserved by Flow for routing decisions. Nodes should set this key to control which path the workflow takes. The default action is `"default"`.
+
 ---
 
 ### MultiAgent
 
 #### Description
 
-**MultiAgent** runs multiple agents in parallel, each responsible for a different part of a software project. Results are merged into a single shared store.
+**MultiAgent** runs multiple agents in parallel. All agents operate on the same shared store concurrently. Writes must use distinct keys to avoid conflicts.
 
 #### Example
 
 ```rust
 /*!
-Runs multiple agents in parallel, each responsible for a different part of a software project.
+Runs multiple agents in parallel, each operating on the same shared store.
 */
 let mut multi_agent = MultiAgent::new();
 multi_agent.add_agent(agent1);
@@ -159,11 +161,10 @@ let result = multi_agent.run(store).await;
 
 ```mermaid
 flowchart LR
-    InputStore[Input SharedStore] --> Agent1
+    InputStore[Shared Store] --> Agent1
     InputStore --> Agent2
-    Agent1 --> Merge[Merge Results]
-    Agent2 --> Merge
-    Merge --> OutputStore[Output SharedStore]
+    Agent1 --> OutputStore[Same Shared Store]
+    Agent2 --> OutputStore
 ```
 
 ---

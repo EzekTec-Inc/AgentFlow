@@ -80,7 +80,16 @@ impl Clone for Workflow {
 
 impl Node<SharedStore, SharedStore> for Workflow {
     fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
-        Box::pin(self.flow.run(input))
+        let params = self.params.clone();
+        Box::pin(async move {
+            {
+                let mut store = input.lock().unwrap();
+                for (k, v) in &params {
+                    store.entry(k.clone()).or_insert(v.clone());
+                }
+            }
+            self.flow.run(input).await
+        })
     }
 }
 
