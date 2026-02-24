@@ -100,11 +100,12 @@ async fn main() {
 
             let facts = {
                 let guard = store.lock().await;
-                guard.get("research_facts")
-            }
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+                guard
+                    .get("research_facts")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
 
             let code_prompt = format!(
                 "You are a senior TypeScript developer. Write a TypeScript function that prints one fun fact about maple syrup, chosen from the following list:\n{}\nOutput only the TypeScript code.",
@@ -136,11 +137,12 @@ async fn main() {
 
             let code = {
                 let guard = store.lock().await;
-                guard.get("typescript_code")
-            }
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
+                guard
+                    .get("typescript_code")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
 
             let review_prompt = format!(
                 "You are a code reviewer. Review the following TypeScript code for correctness and style. Suggest improvements if needed.\n\n{}",
@@ -174,33 +176,39 @@ async fn main() {
 
             // Research phase
             let store = research_node.call(store).await;
-            let facts = {
-                let guard = store.lock().await;
-                guard.get("research_facts")
-            }.cloned();
 
             // Code phase
             let store = code_node.call(store).await;
-            let code = {
-                let guard = store.lock().await;
-                guard.get("typescript_code")
-            }.cloned();
 
             // Review phase
             let store = review_node.call(store).await;
-            let review = {
+
+            // Extract all values from store in a single block to avoid lifetime issues
+            let (facts, code, review) = {
                 let guard = store.lock().await;
-                guard.get("review")
-            }.cloned();
+                let facts = guard
+                    .get("research_facts")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let code = guard
+                    .get("typescript_code")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let review = guard
+                    .get("review")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                (facts, code, review)
+            };
 
             // Aggregate results
-            if let Some(Value::String(f)) = facts {
+            if let Some(f) = facts {
                 report.push_str(&format!("📚 Research Facts:\n{}\n\n", f));
             }
-            if let Some(Value::String(c)) = code {
+            if let Some(c) = code {
                 report.push_str(&format!("🧑‍💻 TypeScript Code:\n{}\n\n", c));
             }
-            if let Some(Value::String(rv)) = review {
+            if let Some(rv) = review {
                 report.push_str(&format!("🔍 Review:\n{}\n\n", rv));
             }
             report.push_str("✅ All phases complete.");
