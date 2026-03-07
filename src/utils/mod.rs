@@ -18,6 +18,9 @@ flowchart LR
 ```
 */
 
+/// External tool execution wrappers
+pub mod tool;
+
 /// LLM Wrapper examples
 pub mod llm {
     use crate::core::node::{create_node, Node, SharedStore};
@@ -37,7 +40,10 @@ pub mod llm {
                 };
 
                 let response = format!("Mock response to: '{}'", prompt);
-                store.lock().await.insert("response".to_string(), Value::String(response));
+                store
+                    .lock()
+                    .await
+                    .insert("response".to_string(), Value::String(response));
                 store
             })
         })
@@ -50,9 +56,7 @@ pub mod web_search {
     use serde_json::Value;
 
     /// Example Google Search wrapper - implement your own
-    pub fn create_google_search_node(
-        api_key: String,
-    ) -> Box<dyn Node<SharedStore, SharedStore>> {
+    pub fn create_google_search_node(api_key: String) -> Box<dyn Node<SharedStore, SharedStore>> {
         create_node(move |store: SharedStore| {
             let _api_key = api_key.clone();
             Box::pin(async move {

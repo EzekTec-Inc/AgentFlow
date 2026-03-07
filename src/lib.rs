@@ -13,28 +13,40 @@ pub mod core;
 pub mod patterns;
 pub mod utils;
 
+#[cfg(feature = "skills")]
+pub mod skills;
+
+#[cfg(feature = "mcp")]
+pub mod mcp;
+
 /// Re-export the public API to match Python AgentFlow structure
 pub mod prelude {
-    pub use crate::core::node::{Node, NodeResult, SharedStore, SimpleNode, ResultNode, create_node, create_result_node, create_batch_node};
-    pub use crate::core::flow::Flow;
     pub use crate::core::batch::{Batch, ParallelBatch};
+    pub use crate::core::flow::Flow;
+    pub use crate::core::node::{
+        create_batch_node, create_node, create_result_node, Node, NodeResult, ResultNode,
+        SharedStore, SimpleNode,
+    };
     pub use crate::core::store::Store;
     pub use crate::patterns::agent::Agent;
-    pub use crate::patterns::workflow::Workflow;
-    pub use crate::patterns::rag::Rag;
     pub use crate::patterns::mapreduce::MapReduce;
-    pub use crate::patterns::multi_agent::{MultiAgent, MergeStrategy};
+    pub use crate::patterns::multi_agent::{MergeStrategy, MultiAgent};
+    pub use crate::patterns::rag::Rag;
     pub use crate::patterns::structured_output::StructuredOutput;
+    pub use crate::patterns::workflow::Workflow;
 }
 
 // Direct exports to match Python's flat namespace
-pub use crate::core::node::{Node, NodeResult, SharedStore, SimpleNode, ResultNode, create_node, create_result_node, create_batch_node};
-pub use crate::core::flow::Flow;
 pub use crate::core::batch::{Batch, ParallelBatch};
+pub use crate::core::flow::Flow;
+pub use crate::core::node::{
+    create_batch_node, create_node, create_result_node, Node, NodeResult, ResultNode, SharedStore,
+    SimpleNode,
+};
 pub use crate::core::store::Store;
 pub use crate::patterns::agent::Agent;
-pub use crate::patterns::workflow::Workflow;
-pub use crate::patterns::rag::Rag;
 pub use crate::patterns::mapreduce::MapReduce;
-pub use crate::patterns::multi_agent::{MultiAgent, MergeStrategy};
+pub use crate::patterns::multi_agent::{MergeStrategy, MultiAgent};
+pub use crate::patterns::rag::Rag;
 pub use crate::patterns::structured_output::StructuredOutput;
+pub use crate::patterns::workflow::Workflow;

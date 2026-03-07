@@ -24,13 +24,12 @@ let result = pipeline.call(store).await;
 */
 
 use agentflow::prelude::*;
+use chrono::Utc;
+use inquire::{Select, Text};
 use rig::prelude::*;
 use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use chrono::Utc;
-use inquire::{Select, Text};
 
 #[tokio::main]
 async fn main() {
@@ -100,7 +99,8 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                         value
                     );
                     let client = providers::openai::Client::from_env();
-                    let rig_agent = client.agent("gpt-4o-mini")
+                    let rig_agent = client
+                        .agent("gpt-4o-mini")
                         .preamble("You are a research assistant.")
                         .build();
 
@@ -111,7 +111,10 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
 
                     println!("Agent 1: Research output:\n{}\n", research);
 
-                    store.lock().await.insert("research".to_string(), Value::String(research));
+                    store
+                        .lock()
+                        .await
+                        .insert("research".to_string(), Value::String(research));
                     store
                 }
             })
@@ -136,7 +139,8 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 research
             );
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-4o-mini")
+            let rig_agent = client
+                .agent("gpt-4o-mini")
                 .preamble("You are a summarization expert.")
                 .build();
 
@@ -147,7 +151,10 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
 
             println!("Agent 2: Summary output:\n{}\n", summary);
 
-            store.lock().await.insert("summary".to_string(), Value::String(summary));
+            store
+                .lock()
+                .await
+                .insert("summary".to_string(), Value::String(summary));
             store
         })
     });
@@ -170,7 +177,8 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 summary
             );
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-4o-mini")
+            let rig_agent = client
+                .agent("gpt-4o-mini")
                 .preamble("You are a critical reviewer.")
                 .build();
 
@@ -181,7 +189,10 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
 
             println!("Agent 3: Critique output:\n{}\n", critique);
 
-            store.lock().await.insert("critique".to_string(), Value::String(critique));
+            store
+                .lock()
+                .await
+                .insert("critique".to_string(), Value::String(critique));
             store
         })
     });
@@ -213,7 +224,10 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
             };
 
             if research.is_empty() || summary.is_empty() || critique.is_empty() {
-                store.lock().await.insert("error".to_string(), Value::String("Missing required fields".to_string()));
+                store.lock().await.insert(
+                    "error".to_string(),
+                    Value::String("Missing required fields".to_string()),
+                );
                 return store;
             }
 
@@ -225,7 +239,10 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 "critique": critique,
                 "timestamp": Utc::now().to_rfc3339(),
             });
-            store.lock().await.insert("structured_output".to_string(), structured.clone());
+            store
+                .lock()
+                .await
+                .insert("structured_output".to_string(), structured.clone());
             println!("Step 4: Output structured and validated.\n");
             store
         })
@@ -249,7 +266,10 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
     let mut store = HashMap::new();
     store.insert("topic".to_string(), Value::String(topic.to_string()));
 
-    let result = match pipeline.generate(std::sync::Arc::new(tokio::sync::Mutex::new(store))).await {
+    let result = match pipeline
+        .generate(std::sync::Arc::new(tokio::sync::Mutex::new(store)))
+        .await
+    {
         Ok(result_store) => result_store,
         Err(e) => {
             println!("Validation error: {}", e);

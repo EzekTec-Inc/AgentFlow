@@ -27,7 +27,10 @@ impl Store {
 
     pub async fn get_string(&self, key: &str) -> Option<String> {
         let guard = self.inner.lock().await;
-        guard.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+        guard
+            .get(key)
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
     }
 
     pub async fn get_i64(&self, key: &str) -> Option<i64> {
@@ -79,23 +82,34 @@ impl Store {
 
     pub async fn require(&self, key: &str) -> Result<Value, String> {
         let guard = self.inner.lock().await;
-        guard.get(key).cloned().ok_or_else(|| format!("Required key '{}' not found", key))
+        guard
+            .get(key)
+            .cloned()
+            .ok_or_else(|| format!("Required key '{}' not found", key))
     }
 
     pub async fn require_string(&self, key: &str) -> Result<String, String> {
-        self.get_string(key).await.ok_or_else(|| format!("Required string key '{}' not found", key))
+        self.get_string(key)
+            .await
+            .ok_or_else(|| format!("Required string key '{}' not found", key))
     }
 
     pub async fn require_i64(&self, key: &str) -> Result<i64, String> {
-        self.get_i64(key).await.ok_or_else(|| format!("Required i64 key '{}' not found", key))
+        self.get_i64(key)
+            .await
+            .ok_or_else(|| format!("Required i64 key '{}' not found", key))
     }
 
     pub async fn require_f64(&self, key: &str) -> Result<f64, String> {
-        self.get_f64(key).await.ok_or_else(|| format!("Required f64 key '{}' not found", key))
+        self.get_f64(key)
+            .await
+            .ok_or_else(|| format!("Required f64 key '{}' not found", key))
     }
 
     pub async fn require_bool(&self, key: &str) -> Result<bool, String> {
-        self.get_bool(key).await.ok_or_else(|| format!("Required bool key '{}' not found", key))
+        self.get_bool(key)
+            .await
+            .ok_or_else(|| format!("Required bool key '{}' not found", key))
     }
 
     pub async fn contains_key(&self, key: &str) -> bool {

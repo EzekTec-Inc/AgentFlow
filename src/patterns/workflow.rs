@@ -1,7 +1,7 @@
 use crate::core::flow::Flow;
 use crate::core::node::{Node, SharedStore, SimpleNode};
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 /// Workflow chains multiple tasks into pipelines
 pub struct Workflow {
@@ -46,21 +46,23 @@ impl Workflow {
     }
 
     /// Execute the workflow
-    pub async fn execute(&self, mut store: std::collections::HashMap<String, serde_json::Value>) -> std::collections::HashMap<String, serde_json::Value> {
+    pub async fn execute(
+        &self,
+        mut store: std::collections::HashMap<String, serde_json::Value>,
+    ) -> std::collections::HashMap<String, serde_json::Value> {
         // Merge params into store for parity with Python
         for (k, v) in &self.params {
             store.entry(k.clone()).or_insert(v.clone());
         }
         let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(store));
         let result_store = self.flow.run(shared_store).await;
-        std::sync::Arc::try_unwrap(result_store)
-            .map_or_else(
-                |arc| {
-                    let rt = tokio::runtime::Handle::current();
-                    rt.block_on(async { arc.lock().await.clone() })
-                },
-                |mutex| mutex.into_inner()
-            )
+        std::sync::Arc::try_unwrap(result_store).map_or_else(
+            |arc| {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async { arc.lock().await.clone() })
+            },
+            |mutex| mutex.into_inner(),
+        )
     }
 
     /// Get a node by step name

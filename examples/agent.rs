@@ -1,7 +1,7 @@
 /*!
 # Example: agent.rs
 
-**Purpose:**  
+**Purpose:**
 Demonstrates how to create a single LLM-powered agent using PocketFlow and the rig crate, including retry logic and both ergonomic and low-level usage.
 
 **How it works:**
@@ -63,7 +63,10 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            store.lock().await.insert("response".to_string(), Value::String(response));
+            store
+                .lock()
+                .await
+                .insert("response".to_string(), Value::String(response));
             store
         })
     });
@@ -78,14 +81,13 @@ async fn main() {
 
     let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(store));
     let result_store = agent.call(shared_store).await;
-    let result_map = std::sync::Arc::try_unwrap(result_store)
-        .map_or_else(
-            |arc| {
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(async { arc.lock().await.clone() })
-            },
-            |mutex| mutex.into_inner()
-        );
+    let result_map = std::sync::Arc::try_unwrap(result_store).map_or_else(
+        |arc| {
+            let rt = tokio::runtime::Handle::current();
+            rt.block_on(async { arc.lock().await.clone() })
+        },
+        |mutex| mutex.into_inner(),
+    );
 
     if let Some(response) = result_map.get("response").and_then(|v| v.as_str()) {
         println!("[direct call response]: \n{}\n", response);

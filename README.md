@@ -247,6 +247,50 @@ flowchart LR
 
 ---
 
+### Rust Agentic Skills & MCP
+
+AgentFlow now includes built-in support for the [rust-agentic-skills](https://github.com/rust-agentic-skills) ecosystem via feature flags.
+
+#### 1. RPI Workflow
+
+A specialized graph orchestrating the **Research -> Plan -> Implement -> Verify** loop.
+
+```rust
+use agentflow::patterns::rpi::RpiWorkflow;
+
+let rpi = RpiWorkflow::new()
+    .with_research(research_node)
+    .with_plan(plan_node)
+    .with_implement(implement_node)
+    .with_verify(verify_node);
+
+let result = rpi.run(store).await;
+```
+
+#### 2. Skill Parser & Tool Node (requires `skills` feature)
+
+Parse YAML-frontmatter `SKILL.md` files and bind shell tools as workflow nodes.
+
+```rust
+use agentflow::skills::Skill;
+use agentflow::utils::tool::create_tool_node;
+
+let skill = Skill::from_file("SKILL.md").await?;
+let tool = create_tool_node("shell", "bash", vec!["-c".into(), "echo 'Hello'".into()]);
+```
+
+#### 3. MCP Server (requires `mcp` feature)
+
+Run a minimalist Model Context Protocol server over stdio to expose AgentFlow to MCP-compatible clients.
+
+```rust
+use agentflow::mcp::McpServer;
+
+McpServer::new("my-agentflow-tools", "1.0.0").run().await?;
+```
+
+---
+
 ## 🚀 Advanced Features
 
 ### NodeResult - Result-Based Error Handling
@@ -415,6 +459,8 @@ AgentFlow is a minimalist, async-first Rust framework for building, orchestratin
 - **MultiAgent**: Parallel or coordinated agent execution.
 - **RAG**: Retrieval-Augmented Generation (retriever + generator).
 - **MapReduce**: Batch map and reduce over data.
+- **rust-agentic-skills**: Built-in support for the `rust-agentic-skills` standard, including the RPI (Research, Plan, Implement, Verify) workflow and declarative `SKILL.md` parser.
+- **MCP Server**: Built-in Model Context Protocol server exposing AgentFlow skills to compatible clients (Cursor, Claude Desktop, etc.).
 - **Composable**: Build complex systems from simple, reusable async parts.
 - **Async-first**: Designed for async/await and concurrent execution.
 

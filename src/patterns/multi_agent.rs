@@ -1,7 +1,7 @@
 use crate::core::node::{Node, SharedStore};
 use futures::future::join_all;
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 #[derive(Clone)]
 pub enum MergeStrategy {
@@ -76,7 +76,11 @@ impl MultiAgent {
         store
     }
 
-    async fn run_custom(&self, store: SharedStore, merge_fn: fn(Vec<SharedStore>) -> SharedStore) -> SharedStore {
+    async fn run_custom(
+        &self,
+        store: SharedStore,
+        merge_fn: fn(Vec<SharedStore>) -> SharedStore,
+    ) -> SharedStore {
         let mut results = Vec::new();
         for agent in &self.agents {
             let input = store.lock().await.clone();

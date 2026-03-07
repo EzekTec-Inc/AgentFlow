@@ -1,6 +1,6 @@
 use crate::core::node::{Node, SharedStore};
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 #[derive(Clone)]
 /// RAG integrates data retrieval with generation
@@ -11,7 +11,10 @@ pub struct Rag<R, G> {
 
 impl<R, G> Rag<R, G> {
     pub fn new(retriever: R, generator: G) -> Self {
-        Self { retriever, generator }
+        Self {
+            retriever,
+            generator,
+        }
     }
 
     pub async fn ask(&self, query: SharedStore) -> SharedStore

@@ -1,7 +1,7 @@
 /*!
 # Example: mapreduce.rs
 
-**Purpose:**  
+**Purpose:**
 Shows how to use the MapReduce pattern to process a batch of documents, summarize each with an LLM, and aggregate the results.
 
 **How it works:**
@@ -25,7 +25,7 @@ use rig::prelude::*;
 use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -69,7 +69,10 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            store.lock().await.insert("summary".to_string(), Value::String(summary));
+            store
+                .lock()
+                .await
+                .insert("summary".to_string(), Value::String(summary));
             store
         })
     });
@@ -81,7 +84,10 @@ async fn main() {
             for s in &stores {
                 let summary = {
                     let guard = s.lock().await;
-                    guard.get("summary").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    guard
+                        .get("summary")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
                 };
                 if let Some(summary) = summary {
                     all_summaries.push(summary);
@@ -107,5 +113,8 @@ async fn main() {
         guard.clone()
     };
 
-    println!("All Summaries:\n{}", result_map.get("all_summaries").unwrap());
+    println!(
+        "All Summaries:\n{}",
+        result_map.get("all_summaries").unwrap()
+    );
 }

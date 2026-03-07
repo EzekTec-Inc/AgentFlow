@@ -17,7 +17,8 @@ pub trait Node<I, O>: Send + Sync + DynClone {
 dyn_clone::clone_trait_object!(<I, O> Node<I, O>);
 
 pub trait NodeResult<I, O>: Send + Sync + DynClone {
-    fn call(&self, input: I) -> Pin<Box<dyn Future<Output = Result<O, anyhow::Error>> + Send + '_>>;
+    fn call(&self, input: I)
+        -> Pin<Box<dyn Future<Output = Result<O, anyhow::Error>> + Send + '_>>;
 }
 dyn_clone::clone_trait_object!(<I, O> NodeResult<I, O>);
 
@@ -37,7 +38,10 @@ where
         F: Fn(SharedStore) -> Fut + Send + Sync + Clone,
         Fut: Future<Output = SharedStore> + Send + 'static,
     {
-        fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
+        fn call(
+            &self,
+            input: SharedStore,
+        ) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
             Box::pin(self.0(input))
         }
     }
@@ -58,7 +62,10 @@ where
         F: Fn(SharedStore) -> Fut + Send + Sync + Clone,
         Fut: Future<Output = Result<SharedStore, anyhow::Error>> + Send + 'static,
     {
-        fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = Result<SharedStore, anyhow::Error>> + Send + '_>> {
+        fn call(
+            &self,
+            input: SharedStore,
+        ) -> Pin<Box<dyn Future<Output = Result<SharedStore, anyhow::Error>> + Send + '_>> {
             Box::pin(self.0(input))
         }
     }
@@ -67,7 +74,6 @@ where
 }
 
 /// Helper to create a node with built-in retry/fallback logic and prep/exec/post pipeline.
-/// This is the closest Rust equivalent to the Python Node with retries and pipeline.
 pub fn create_retry_node<PrepF, PrepFut, ExecF, ExecFut, PostF, PostFut>(
     prep: PrepF,
     exec: ExecF,
@@ -104,7 +110,10 @@ where
         PostF: Fn(SharedStore, &Value, &Value) -> PostFut + Send + Sync + Clone + 'static,
         PostFut: Future<Output = SharedStore> + Send + 'static,
     {
-        fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
+        fn call(
+            &self,
+            input: SharedStore,
+        ) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
             let prep = self.prep.clone();
             let exec = self.exec.clone();
             let post = self.post.clone();
@@ -170,7 +179,10 @@ where
         F: Fn(Vec<SharedStore>) -> Fut + Send + Sync + Clone + 'static,
         Fut: Future<Output = SharedStore> + Send + 'static,
     {
-        fn call(&self, input: Vec<SharedStore>) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
+        fn call(
+            &self,
+            input: Vec<SharedStore>,
+        ) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
             Box::pin(self.0(input))
         }
     }
@@ -188,4 +200,3 @@ where
         (**self).call(input)
     }
 }
-

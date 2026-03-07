@@ -1,0 +1,29 @@
+
+- 2026-03-07T17:15:00Z
+  - Summary: Implemented RPI (Research-Plan-Implement) workflow pattern.
+  - Files modified: `src/patterns/rpi.rs` (created), `src/patterns/mod.rs` (modified).
+  - Reason: To support the `rust-agentic-skills` paradigm by providing a standardized DAG for Research, Plan, Implement, and Verify loops without adding core dependencies.
+  - Previous behavior: The RPI pattern was not natively structured or provided as an out-of-the-box template.
+  - New behavior: Users can now use `RpiWorkflow::new().with_research(...).with_plan(...)...` to automatically build a compliant execution graph.
+  - Rollback instructions: Delete `src/patterns/rpi.rs` and remove the `rpi` module exports from `src/patterns/mod.rs`.
+- 2026-03-07T17:25:00Z
+  - Summary: Implemented "Tools" as Standard Nodes for external script execution.
+  - Files modified: `src/utils/tool.rs` (created), `src/utils/mod.rs` (modified).
+  - Reason: To support the "Brain-Tool-Context" architecture of `rust-agentic-skills` by providing a native way to execute external scripts/binaries as part of an AgentFlow graph without introducing a new `Tool` abstraction that complicates the core engine.
+  - Previous behavior: No standardized way to execute external shell commands as an AgentFlow `Node`.
+  - New behavior: Users can use `create_tool_node("name", "command", vec!["args"...])` which executes the command and injects stdout, stderr, and exit status directly into the `SharedStore`.
+  - Rollback instructions: Delete `src/utils/tool.rs` and remove the `tool` module export from `src/utils/mod.rs`.
+- 2026-03-07T17:35:00Z
+  - Summary: Implemented Skill parser to support `rust-agentic-skills`.
+  - Files modified: `Cargo.toml` (modified), `src/lib.rs` (modified), `src/skills/mod.rs` (created).
+  - Reason: To parse `SKILL.md` files (YAML frontmatter + Markdown body) which form the "Brain" of the rust-agentic-skills architecture. This is hidden behind the `skills` Cargo feature to preserve AgentFlow's dependency-free core.
+  - Previous behavior: No built-in way to parse SKILL.md files.
+  - New behavior: Users can enable `features = ["skills"]` and call `Skill::from_file("SKILL.md")` to parse metadata and instructions.
+  - Rollback instructions: Delete `src/skills/mod.rs`, remove `#[cfg(feature = "skills")] pub mod skills;` from `src/lib.rs`, and remove the `skills` feature and `serde_yaml` optional dependency from `Cargo.toml`.
+- 2026-03-07T17:45:00Z
+  - Summary: Implemented MCP Server to expose AgentFlow Skills to standard Model Context Protocol clients.
+  - Files modified: `Cargo.toml` (modified), `src/lib.rs` (modified), `src/mcp/mod.rs` (created), `src/mcp/server.rs` (created).
+  - Reason: To allow standard MCP clients (like Claude, Cursor, Gemini) to consume AgentFlow Tools as MCP Tools. This is hidden behind the `mcp` Cargo feature.
+  - Previous behavior: No built-in way to expose AgentFlow tools to MCP clients.
+  - New behavior: Users can enable `features = ["mcp"]` and start an `McpServer::new("my-tools", "1.0").run().await` that handles JSON-RPC standard I/O for tools over the Model Context Protocol.
+  - Rollback instructions: Delete the `src/mcp` directory, remove `#[cfg(feature = "mcp")] pub mod mcp;` from `src/lib.rs`, and remove the `mcp = ["skills"]` feature from `Cargo.toml`.

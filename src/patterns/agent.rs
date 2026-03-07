@@ -1,6 +1,6 @@
 use crate::core::node::{Node, SharedStore};
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 #[derive(Clone)]
 /// Minimal agent pattern - autonomously makes decisions
@@ -12,14 +12,25 @@ pub struct Agent<N> {
 
 impl<N> Agent<N> {
     pub fn new(node: N) -> Self {
-        Self { node, max_retries: 1, wait_millis: 0 }
+        Self {
+            node,
+            max_retries: 1,
+            wait_millis: 0,
+        }
     }
 
     pub fn with_retry(node: N, max_retries: usize, wait_millis: u64) -> Self {
-        Self { node, max_retries, wait_millis }
+        Self {
+            node,
+            max_retries,
+            wait_millis,
+        }
     }
 
-    pub async fn decide(&self, input: std::collections::HashMap<String, serde_json::Value>) -> std::collections::HashMap<String, serde_json::Value>
+    pub async fn decide(
+        &self,
+        input: std::collections::HashMap<String, serde_json::Value>,
+    ) -> std::collections::HashMap<String, serde_json::Value>
     where
         N: Node<SharedStore, SharedStore> + Clone,
     {
@@ -41,14 +52,13 @@ impl<N> Agent<N> {
             }
         }
         let result_store = result_store.unwrap_or(shared_store);
-        std::sync::Arc::try_unwrap(result_store)
-            .map_or_else(
-                |arc| {
-                    let rt = tokio::runtime::Handle::current();
-                    rt.block_on(async { arc.lock().await.clone() })
-                },
-                |mutex| mutex.into_inner()
-            )
+        std::sync::Arc::try_unwrap(result_store).map_or_else(
+            |arc| {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async { arc.lock().await.clone() })
+            },
+            |mutex| mutex.into_inner(),
+        )
     }
 }
 

@@ -1,7 +1,7 @@
 /*!
 # Example: orchestrator_multi_agent.rs
 
-**Purpose:**  
+**Purpose:**
 Demonstrates an orchestrator agent coordinating a multi-phase, multi-role workflow (research, code, review) with real LLM calls and user progress updates.
 
 **How it works:**
@@ -65,7 +65,10 @@ fn llm_agent_node(
                     Err(e) => format!("Error: {}", e),
                 };
 
-                store.lock().await.insert(output_key.clone(), Value::String(response));
+                store
+                    .lock()
+                    .await
+                    .insert(output_key.clone(), Value::String(response));
                 println!("Completed phase: {}", output_key);
                 store
             }
@@ -84,14 +87,17 @@ async fn main() {
         "You are a research assistant. Research and summarize 5 key facts about {} for a software project. Output as a numbered list.",
         topic
     );
-    store.insert("research_prompt".to_string(), Value::String(research_prompt));
+    store.insert(
+        "research_prompt".to_string(),
+        Value::String(research_prompt),
+    );
 
     // Research node: generates facts
     let research_node = llm_agent_node(
         "gpt-4o-mini",
         "You are a research assistant.",
         "research_prompt",
-        "research_facts"
+        "research_facts",
     );
 
     // Code node: uses facts from research phase
@@ -125,7 +131,10 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            store.lock().await.insert("typescript_code".to_string(), Value::String(response));
+            store
+                .lock()
+                .await
+                .insert("typescript_code".to_string(), Value::String(response));
             println!("Completed phase: code");
             store
         })
@@ -162,7 +171,10 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            store.lock().await.insert("review".to_string(), Value::String(response));
+            store
+                .lock()
+                .await
+                .insert("review".to_string(), Value::String(response));
             println!("Completed phase: review");
             store
         })
@@ -215,7 +227,10 @@ async fn main() {
             }
             report.push_str("✅ All phases complete.");
 
-            store.lock().await.insert("report".to_string(), Value::String(report));
+            store
+                .lock()
+                .await
+                .insert("report".to_string(), Value::String(report));
             store
         })
     });

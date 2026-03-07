@@ -19,6 +19,9 @@ dyn-clone = "1.0.20"
 chrono = { version = "0.4", features = ["serde"] }
 inquire = "0.6"
 qdrant-client = "1.15.0"
+owo-colors = "4"
+serde_yaml = { version = "0.9.34", optional = true }
+tracing = { version = "0.1.44", optional = true }
 
 [dev-dependencies]
 rig = { package = "rig-core", version = "0.16.0" }
@@ -55,3 +58,12 @@ path = "examples/orchestrator_multi_agent.rs"
 [[example]]
 name = "structured-output"
 path = "examples/structured_output.rs"
+
+[[example]]
+name = "rust-agentic-skills"
+path = "examples/rust_agentic_skills.rs"
+required-features = ["skills"]
+
+[features]
+skills = ["dep:serde_yaml"]
+mcp = ["skills"]

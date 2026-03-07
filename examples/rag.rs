@@ -1,7 +1,7 @@
 /*!
 # Example: rag.rs
 
-**Purpose:**  
+**Purpose:**
 Implements a real-world Retrieval-Augmented Generation (RAG) pipeline using rig for both retrieval and generation.
 
 **How it works:**
@@ -25,7 +25,6 @@ use rig::prelude::*;
 use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
 #[tokio::main]
 async fn main() {
@@ -56,7 +55,8 @@ async fn main() {
             println!("Retrieval prompt:\n{}\n", retrieval_prompt);
 
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-4o-mini")
+            let rig_agent = client
+                .agent("gpt-4o-mini")
                 .preamble("You are a helpful retrieval agent.")
                 .build();
 
@@ -67,7 +67,10 @@ async fn main() {
 
             println!("Retrieved context:\n{}\n", context);
 
-            store.lock().await.insert("context".to_string(), Value::String(context));
+            store
+                .lock()
+                .await
+                .insert("context".to_string(), Value::String(context));
             store
         })
     });
@@ -97,7 +100,8 @@ async fn main() {
             println!("Generation prompt:\n{}\n", generation_prompt);
 
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-4o-mini")
+            let rig_agent = client
+                .agent("gpt-4o-mini")
                 .preamble("You are a helpful answering agent.")
                 .build();
 
@@ -108,13 +112,18 @@ async fn main() {
 
             println!("Generated response:\n{}\n", response);
 
-            store.lock().await.insert("response".to_string(), Value::String(response));
+            store
+                .lock()
+                .await
+                .insert("response".to_string(), Value::String(response));
             store
         })
     });
 
     let rag = Rag::new(retriever, generator);
-    let result = rag.call(std::sync::Arc::new(tokio::sync::Mutex::new(store))).await;
+    let result = rag
+        .call(std::sync::Arc::new(tokio::sync::Mutex::new(store)))
+        .await;
 
     let result_map = {
         let guard = result.lock().await;

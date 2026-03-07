@@ -24,17 +24,32 @@ let result = workflow.execute(store).await;
 */
 
 use agentflow::prelude::*;
+use owo_colors::OwoColorize;
 use rig::prelude::*;
 use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{self, Write};
-use std::sync::{Arc, Mutex};
 
 fn prompt_user(step: &str, result: &serde_json::Value) -> String {
-    println!("\n--- Step: {} ---", step);
-    println!("Result of last processing:\n{}\n", result);
-    println!("Options: [a]pprove, [r]equest revision, [d]eny/restart, [c]ancel");
+    // temp container for extracting and working the result into a well formatted string to make it easy to print on screen.
+    let proc_result = result.clone();
+    let proc_result =
+        serde_json::to_string_pretty(&proc_result).unwrap_or(format!("{}", &proc_result));
+    let res = proc_result.replace("\\n", "\n");
+
+    // print the result to screen.
+    println!("\n--- Step: {} ---", step.yellow().bold());
+    println!(
+        "Result of last processing:\n{}\n",
+        res //serde_json::to_string_pretty(result).unwrap_or(format!("{}", &result))
+    );
+    println!(
+        "{}",
+        "Options: [a]pprove, [r]equest revision, [d]eny/restart, [c]ancel"
+            .bright_green()
+            .bold()
+    );
     print!("Your choice: ");
     io::stdout().flush().unwrap();
     let mut input = String::new();
@@ -55,11 +70,12 @@ async fn main() {
                 let value = property_desc.clone();
                 async move {
                     let prompt = format!(
-                        "You are a land registry search officer. Perform a title search for the following property: '{}'. List any encumbrances, prior owners, and confirm if the title is clear for transfer.",
+                        "You are an expert and experienced land registry search officer. Perform a title search for the following property: '{}'. List any encumbrances, prior owners, and confirm if the title is clear for transfer.",
                         value
                     );
                     let client = providers::openai::Client::from_env();
-                    let rig_agent = client.agent("gpt-4o-mini")
+                    let rig_agent = client
+                        .agent("gpt-4o-mini")
                         .preamble("You are a diligent land registry search officer.")
                         .build();
 
@@ -68,8 +84,14 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().await.insert("title_search".to_string(), Value::String(response));
-                    store.lock().await.insert("action".to_string(), Value::String("default".to_string()));
+                    store
+                        .lock()
+                        .await
+                        .insert("title_search".to_string(), Value::String(response));
+                    store
+                        .lock()
+                        .await
+                        .insert("action".to_string(), Value::String("default".to_string()));
                     store
                 }
             })
@@ -86,21 +108,22 @@ async fn main() {
                 let property_desc = property_desc.clone();
                 async move {
                     let search_result = {
-                let guard = store.lock().await;
-                guard
-                    .get("title_search")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string()
-            };
+                        let guard = store.lock().await;
+                        guard
+                            .get("title_search")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string()
+                    };
 
                     let prompt = format!(
-                        "You are a land registry officer. Based on the following title search result:\n{}\n\nPrepare a draft land title issuance for applicant '{}', property '{}'. Include all relevant legal language and conditions.",
+                        "You are an expert and experienced land registry officer. Based on the following title search result:\n{}\n\nPrepare a draft land title issuance for applicant '{}', property '{}'. Include all relevant legal language and conditions.",
                         search_result, applicant_name, property_desc
                     );
                     let client = providers::openai::Client::from_env();
-                    let rig_agent = client.agent("gpt-4o-mini")
-                        .preamble("You are a land registry officer specializing in title issuance.")
+                    let rig_agent = client
+                        .agent("gpt-4o-mini")
+                        .preamble("You are an expert and experienced land registry officer specializing in title issuance.")
                         .build();
 
                     let response = match rig_agent.prompt(&prompt).await {
@@ -108,8 +131,14 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().await.insert("title_issuance".to_string(), Value::String(response));
-                    store.lock().await.insert("action".to_string(), Value::String("default".to_string()));
+                    store
+                        .lock()
+                        .await
+                        .insert("title_issuance".to_string(), Value::String(response));
+                    store
+                        .lock()
+                        .await
+                        .insert("action".to_string(), Value::String("default".to_string()));
                     store
                 }
             })
@@ -129,12 +158,13 @@ async fn main() {
             };
 
             let prompt = format!(
-                "You are a legal officer. Review the following draft land title issuance for legal sufficiency, compliance, and clarity. Suggest any corrections or improvements.\n\n{}",
+                "You are an expert and experienced legal officer. Review the following draft land title issuance for legal sufficiency, compliance, and clarity. Suggest any corrections or improvements.\n\n{}",
                 title_issuance
             );
             let client = providers::openai::Client::from_env();
-            let rig_agent = client.agent("gpt-4o-mini")
-                .preamble("You are a legal officer specializing in land title review.")
+            let rig_agent = client
+                .agent("gpt-4o-mini")
+                .preamble("You are an expert and experienced legal officer specializing in land title review.")
                 .build();
 
             let response = match rig_agent.prompt(&prompt).await {
@@ -142,8 +172,15 @@ async fn main() {
                 Err(e) => format!("Error: {}", e),
             };
 
-            store.lock().await.insert("legal_review".to_string(), Value::String(response));
-            store.lock().await.insert("action".to_string(), Value::String("default".to_string()));
+            store
+                .lock()
+                .await
+                .insert("legal_review".to_string(), Value::String(response));
+            store
+                .lock()
+                .await
+                .insert("action".to_string(), Value::String("default".to_string()));
+
             store
         })
     });
@@ -167,7 +204,10 @@ async fn main() {
 
         // Present result to user and get action
         let locked = result.lock().await;
-        let step_result = locked.get(&step).cloned().unwrap_or(serde_json::Value::Null);
+        let step_result = locked
+            .get(&step)
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
         drop(locked);
 
         // Show the result of the last processing before HITL interaction
@@ -203,7 +243,9 @@ async fn main() {
         last_result = result.clone();
     }
 
+    println!();
     println!("Workflow complete. Final result:");
+    println!("================================");
     let locked = last_result.lock().await;
     for (k, v) in locked.iter() {
         println!("{}: {}", k, v);

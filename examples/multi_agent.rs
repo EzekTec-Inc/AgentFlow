@@ -1,7 +1,7 @@
 /*!
 # Example: multi_agent.rs
 
-**Purpose:**  
+**Purpose:**
 Demonstrates running multiple agents in parallel, each responsible for a different part of a software project (e.g., generating TypeScript, HTML, and TailwindCSS for a Space Invader game).
 
 **How it works:**
@@ -28,7 +28,7 @@ use rig::prelude::*;
 use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -56,10 +56,10 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().await.insert(
-                        "typescript".to_string(),
-                        Value::String(response),
-                    );
+                    store
+                        .lock()
+                        .await
+                        .insert("typescript".to_string(), Value::String(response));
                     store
                 }
             })
@@ -87,10 +87,10 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().await.insert(
-                        "html".to_string(),
-                        Value::String(response),
-                    );
+                    store
+                        .lock()
+                        .await
+                        .insert("html".to_string(), Value::String(response));
                     store
                 }
             })
@@ -109,8 +109,10 @@ async fn main() {
                 async move {
                     let gemini_client = providers::gemini::Client::from_env();
                     let rig_agent = gemini_client
-                        .agent("gemini-1.5-pro")
-                        .preamble("You are a senior frontend developer specializing in TailwindCSS.")
+                        .agent("gemini-2.5-pro")
+                        .preamble(
+                            "You are a senior frontend developer specializing in TailwindCSS.",
+                        )
                         .build();
 
                     let response = match rig_agent.prompt(&value).await {
@@ -118,10 +120,10 @@ async fn main() {
                         Err(e) => format!("Error: {}", e),
                     };
 
-                    store.lock().await.insert(
-                        "tailwindcss".to_string(),
-                        Value::String(response),
-                    );
+                    store
+                        .lock()
+                        .await
+                        .insert("tailwindcss".to_string(), Value::String(response));
                     store
                 }
             })
@@ -159,7 +161,9 @@ async fn main() {
     });
 
     // Run all agents concurrently
-    let result = multi_agent.run(std::sync::Arc::new(tokio::sync::Mutex::new(store))).await;
+    let result = multi_agent
+        .run(std::sync::Arc::new(tokio::sync::Mutex::new(store)))
+        .await;
 
     // Stop the progress thread
     running.store(false, Ordering::SeqCst);

@@ -33,10 +33,16 @@ use tokio::time::{sleep, Duration};
 async fn main() {
     // Prepare input for two agents
     let mut store1 = HashMap::new();
-    store1.insert("prompt".to_string(), Value::String("Write a haiku about async Rust.".to_string()));
+    store1.insert(
+        "prompt".to_string(),
+        Value::String("Write a haiku about async Rust.".to_string()),
+    );
 
     let mut store2 = HashMap::new();
-    store2.insert("prompt".to_string(), Value::String("Summarize the benefits of concurrency.".to_string()));
+    store2.insert(
+        "prompt".to_string(),
+        Value::String("Summarize the benefits of concurrency.".to_string()),
+    );
 
     // Create two rig-instrumented async LLM nodes
     let llm_node = |desc: &'static str| {
@@ -64,14 +70,23 @@ async fn main() {
                     Err(e) => format!("Error: {}", e),
                 };
 
-                store.lock().await.insert("response".to_string(), Value::String(response));
+                store
+                    .lock()
+                    .await
+                    .insert("response".to_string(), Value::String(response));
                 store
             })
         })
     };
 
-    println!("Agent 1 (poetry) prompt: {}\n", &store1.get("prompt").unwrap());
-    println!("Agent 2 (summarization) prompt: {}\n", &store2.get("prompt").unwrap());
+    println!(
+        "Agent 1 (poetry) prompt: {}\n",
+        &store1.get("prompt").unwrap()
+    );
+    println!(
+        "Agent 2 (summarization) prompt: {}\n",
+        &store2.get("prompt").unwrap()
+    );
     println!("====================================================================\n");
 
     let agent1 = Agent::with_retry(llm_node("poetry"), 2, 500);
@@ -82,6 +97,12 @@ async fn main() {
 
     let (result1, result2) = tokio::join!(fut1, fut2);
 
-    println!("Agent 1 (poetry) response:\n{}\n", result1.get("response").unwrap_or(&Value::Null));
-    println!("Agent 2 (summarization) response:\n{}\n", result2.get("response").unwrap_or(&Value::Null));
+    println!(
+        "Agent 1 (poetry) response:\n{}\n",
+        result1.get("response").unwrap_or(&Value::Null)
+    );
+    println!(
+        "Agent 2 (summarization) response:\n{}\n",
+        result2.get("response").unwrap_or(&Value::Null)
+    );
 }

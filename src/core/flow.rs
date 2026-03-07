@@ -64,7 +64,11 @@ impl Flow {
                     .unwrap_or_else(|| "default".to_string())
             };
 
-            if let Some(next_node) = self.edges.get(&current_node_name).and_then(|edges| edges.get(&action)) {
+            if let Some(next_node) = self
+                .edges
+                .get(&current_node_name)
+                .and_then(|edges| edges.get(&action))
+            {
                 current_node_name = next_node.clone();
             } else {
                 break;

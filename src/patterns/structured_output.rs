@@ -1,6 +1,6 @@
 use crate::core::node::{Node, SharedStore};
-use std::pin::Pin;
 use std::future::Future;
+use std::pin::Pin;
 
 #[derive(Clone)]
 /// StructuredOutput formats outputs consistently
