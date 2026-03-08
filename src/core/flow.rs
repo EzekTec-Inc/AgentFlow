@@ -8,6 +8,7 @@ pub struct Flow {
     nodes: HashMap<String, SimpleNode>,
     edges: HashMap<String, HashMap<String, String>>, // from_node -> action -> to_node
     start_node: Option<String>,
+    pub max_steps: Option<usize>,
 }
 
 impl Flow {
@@ -16,7 +17,14 @@ impl Flow {
             nodes: HashMap::new(),
             edges: HashMap::new(),
             start_node: None,
+            max_steps: None,
         }
+    }
+
+    /// Set a maximum number of steps to prevent infinite loops
+    pub fn with_max_steps(mut self, limit: usize) -> Self {
+        self.max_steps = Some(limit);
+        self
     }
 
     /// Create a flow with a start node
@@ -52,7 +60,19 @@ impl Flow {
             return store;
         };
 
+        let mut steps = 0;
+        let limit = self.max_steps.unwrap_or(usize::MAX);
+
         while let Some(node) = self.nodes.get(&current_node_name) {
+            if steps >= limit {
+                store.lock().await.insert(
+                    "error".to_string(),
+                    serde_json::Value::String("Flow execution exceeded max_steps limit".to_string()),
+                );
+                break;
+            }
+            steps += 1;
+
             store = node.call(store).await;
 
             let action = {
@@ -108,6 +128,7 @@ impl Clone for Flow {
             nodes: new_nodes,
             edges: self.edges.clone(),
             start_node: self.start_node.clone(),
+            max_steps: self.max_steps,
         }
     }
 }
@@ -115,5 +136,49 @@ impl Clone for Flow {
 impl Default for Flow {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::node::create_node;
+
+    #[tokio::test]
+    async fn test_max_steps_prevents_infinite_loop() {
+        let mut flow = Flow::new().with_max_steps(5);
+        
+        let node_a = create_node(|store| async move {
+            {
+                let mut guard = store.lock().await;
+                guard.insert("action".to_string(), serde_json::Value::String("to_b".to_string()));
+            }
+            store
+        });
+        
+        let node_b = create_node(|store| async move {
+            {
+                let mut guard = store.lock().await;
+                guard.insert("action".to_string(), serde_json::Value::String("to_a".to_string()));
+            }
+            store
+        });
+        
+        flow.add_node("A", node_a);
+        flow.add_node("B", node_b);
+        flow.add_edge("A", "to_b", "B");
+        flow.add_edge("B", "to_a", "A");
+        
+        let store = HashMap::new();
+        let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(store));
+        
+        let result_shared = flow.run(shared_store).await;
+        let result = result_shared.lock().await;
+        
+        assert!(result.contains_key("error"));
+        assert_eq!(
+            result.get("error").unwrap().as_str().unwrap(),
+            "Flow execution exceeded max_steps limit"
+        );
     }
 }
