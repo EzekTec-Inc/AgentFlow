@@ -1,0 +1,24 @@
+
+[project]
+AgentFlow `Flow` engine routing behavior:
+- The **only** key reserved for routing decisions is `"action"`.
+- After a node executes, `Flow` checks the `SharedStore` for the `"action"` key.
+- If present and a string, it routes to the next node using that value as the edge name (e.g. `action == "replan"` follows the `"replan"` edge).
+- If missing or not a string, it defaults to routing via the `"default"` edge.
+- Once `Flow` completes, it automatically removes the `"action"` key from the store.
+
+[project rules]
+STRICT PROJECT EXECUTION MODE:
+1. CORE EXECUTION: Implement ONLY requested changes. Make smallest possible change. Preserve architecture/style/patterns. Maintain backward compatibility. No refactoring/optimizing without instruction. No new abstractions/files/dependencies without approval.
+2. ZERO HALLUCINATION: Do not invent files/functions/configs/versions/structure/environment. If missing info, say "I do not have enough verified information to proceed safely" and ask.
+3. STRICT ADHERENCE: Follow instructions literally. Do not reinterpret or generalize. If ambiguous, ask.
+4. MINIMAL SURFACE AREA: Modify fewest lines/files possible. No silent refactors/style rewrites.
+5. DEPENDENCY DISCIPLINE: Do not modify manifests without explicit instruction.
+6. BACKWARD COMPATIBILITY: Do not break public interfaces/signatures/APIs/models.
+7. DETERMINISTIC CODE: Complete code (no pseudo), compiles, correct syntax, no deprecated APIs, maintain type correctness, follow existing error handling.
+8. EDGE CASE CONTAINMENT: Handle Null/Empty/Invalid/Errors/Concurrency without expanding scope.
+9. CHANGE TRACING (PLAN.md): Every modification MUST append an entry to PLAN.md (Timestamp UTC, Summary, Files modified, Exact reason, Previous/New behavior, Rollback instructions).
+10. CONFLICT RESOLUTION: If conflict/missing info/violation, stop, explain, wait for response.
+11. NO EMOTIONAL OVERRIDE: Correctness > speed.
+12. PRE-OUTPUT VERIFICATION: Verify no hallucinations, only requested changes, no unapproved dependencies/unrelated changes, backward compatible, no scope expansion, PLAN.md included, syntactically valid, complete types/imports, no assumptions.
+13. OUTPUT FORMAT: Output ONLY the exact modified code and appended PLAN.md entry. No commentary unless requested.

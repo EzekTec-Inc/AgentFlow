@@ -1,10 +1,6 @@
 use agentflow::prelude::*;
 use agentflow::skills::Skill;
 use agentflow::utils::tool::create_tool_node;
-use rig::client::CompletionClient;
-use rig::client::ProviderClient;
-use rig::completion::Prompt;
-use rig::providers;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -79,29 +75,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::pin(async move {
                 println!("[Workflow] Extracting entities from text using LLM...");
 
-                let openai_client = providers::openai::Client::from_env();
-                let extract_model = openai_client
-                    .agent("gpt-4o")
-                    .preamble("You are a document processing assistant.")
-                    .build();
-
                 // Mocking file read content for demonstration
-                let content = "The contract was signed by John Doe on behalf of Acme Corp for 5000 USD on 2024-01-15.";
+                let _content = "The contract was signed by John Doe on behalf of Acme Corp for 5000 USD on 2024-01-15.";
 
-                let prompt = format!("Extract entities from the following text: {}", content);
-                let response_result: Result<String, _> = extract_model.prompt(&prompt).await;
-                match response_result {
-                    Ok(response) => {
-                        let mut guard = store.lock().await;
-                        guard.insert("extracted_entities".to_string(), Value::String(response));
-                        guard.insert("action".to_string(), Value::String("analyze_semantics".into()));
-                    }
-                    Err(e) => {
-                        println!("[Workflow] Extraction failed: {}", e);
-                        let mut guard = store.lock().await;
-                        guard.insert("action".to_string(), Value::String("retry_extract".into()));
-                    }
-                }
+                // Mocking LLM response to run example without OPENAI_API_KEY
+                let response = "- Person: John Doe\n- Company: Acme Corp\n- Amount: 5000 USD\n- Date: 2024-01-15".to_string();
+
+                let mut guard = store.lock().await;
+                guard.insert("extracted_entities".to_string(), Value::String(response));
+                guard.insert("action".to_string(), Value::String("analyze_semantics".into()));
+                drop(guard);
+
                 store
             })
         }),
@@ -143,13 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::pin(async move {
                 println!("[Workflow] Analyzing semantics and assessing extraction quality...");
 
-                let openai_client = providers::openai::Client::from_env();
-                let analyze_model = openai_client
-                    .agent("gpt-4o")
-                    .preamble("You are a document processing assistant.")
-                    .build();
-
-                let entities = {
+                let _entities = {
                     let guard = store.lock().await;
                     guard
                         .get("extracted_entities")
@@ -158,12 +136,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .to_string()
                 };
 
-                let prompt = format!(
-                    "Assess if the extracted entities are valid. Identify the document context semantics. Respond strictly with 'SUCCESS: <semantics>' or 'FAILURE'. Entities: {}",
-                    entities
-                );
+                // Mocking LLM response to run example without OPENAI_API_KEY
+                let response = "SUCCESS: Context is a business contract signing.".to_string();
+                let response_result: Result<String, String> = Ok(response);
 
-                let response_result: Result<String, _> = analyze_model.prompt(&prompt).await;
                 match response_result {
                     Ok(response) => {
                         let mut guard = store.lock().await;
@@ -207,28 +183,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Parse skills from the standard rust-agentic-skills format
-    let _skill = Skill::from_file("examples/SKILL_DOC_PROCESS.md").await?;
+    let skill = Skill::from_file("examples/SKILL_DOC_PROCESS.md").await?;
 
-    // We bind local shell commands as tool nodes (Mocking the conversion CLI to avoid failure if dependencies are missing on the host)
-    let convert_text_tool = create_tool_node(
-        "convert_text",
-        "bash",
-        vec![
-            "-c".into(),
-            "echo 'Executing pandoc... Document converted to PDF.'".into(),
-        ],
-    );
-    workflow.add_step("convert_text", convert_text_tool);
-
-    let convert_image_tool = create_tool_node(
-        "convert_image",
-        "bash",
-        vec![
-            "-c".into(),
-            "echo 'Executing imagemagick... Image converted to SVG.'".into(),
-        ],
-    );
-    workflow.add_step("convert_image", convert_image_tool);
+    // Dynamically register tools from the SKILL_DOC_PROCESS.md file
+    if let Some(tools) = skill.tools {
+        for tool in tools {
+            // In a real application, we would use the parsed `command` and `args`
+            // For the sake of this example, we mock the execution with bash to avoid 
+            // failures if `pandoc` or `imagemagick` are not installed on the host machine.
+            let mock_script = format!("echo 'Executing {}... Mock tool output.'", tool.command);
+            let tool_node = create_tool_node(
+                &tool.name,
+                "bash",
+                vec!["-c".into(), mock_script],
+            );
+            workflow.add_step(&tool.name, tool_node);
+        }
+    }
 
     // End node
     workflow.add_step("end", create_node(|store| Box::pin(async move { store })));

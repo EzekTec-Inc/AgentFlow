@@ -2,12 +2,22 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillTool {
+    pub name: String,
+    pub description: Option<String>,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
 /// Represents a loaded Skill from a SKILL.md file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Skill {
     pub name: String,
     pub description: String,
     pub version: Option<String>,
+    pub tools: Option<Vec<SkillTool>>,
     #[serde(default)]
     pub instructions: String,
 }
