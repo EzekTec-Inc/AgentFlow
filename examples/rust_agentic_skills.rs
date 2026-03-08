@@ -41,7 +41,7 @@ version: 1.0.0
 ---
 You are an expert Rust developer. Follow the RPI workflow to create a new Cargo project.
 "#;
-    let skill = Skill::from_str(skill_content)?;
+    let skill = Skill::parse(skill_content)?;
     println!(
         "Loaded Skill: {} (v{})",
         skill.name,

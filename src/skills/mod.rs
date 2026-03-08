@@ -16,11 +16,11 @@ impl Skill {
     /// Parse a SKILL.md file containing YAML frontmatter and a Markdown body.
     pub async fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let content = tokio::fs::read_to_string(path).await?;
-        Self::from_str(&content)
+        Self::parse(&content)
     }
 
     /// Parse a SKILL.md content string.
-    pub fn from_str(content: &str) -> Result<Self> {
+    pub fn parse(content: &str) -> Result<Self> {
         if !content.starts_with("---") {
             anyhow::bail!(
                 "Invalid skill file format: Missing YAML frontmatter (must start with ---)"
