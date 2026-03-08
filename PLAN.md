@@ -27,3 +27,37 @@
   - Previous behavior: No built-in way to expose AgentFlow tools to MCP clients.
   - New behavior: Users can enable `features = ["mcp"]` and start an `McpServer::new("my-tools", "1.0").run().await` that handles JSON-RPC standard I/O for tools over the Model Context Protocol.
   - Rollback instructions: Delete the `src/mcp` directory, remove `#[cfg(feature = "mcp")] pub mod mcp;` from `src/lib.rs`, and remove the `mcp = ["skills"]` feature from `Cargo.toml`.
+- **2026-03-07 20:25:00 UTC**: Refactored workflow examples to implement Reason, Plan, and Implement (RPI) strategy.
+  - **Files modified**: `examples/workflow.rs`, `README.md`
+  - **Reason**: User explicitly requested replacing the boilerplate "step1/step2" examples with a concrete RPI workflow strategy.
+  - **Previous behavior**: `workflow.rs` contained a real-estate "title search" workflow. `README.md` contained a generic "step1 -> step2" string insertion example.
+  - **New behavior**: `workflow.rs` implements a 3-agent RPI flow (Reason, Plan, Implement) to write a Fibonacci function using `gpt-4o-mini`. `README.md` contains an updated diagram and code snippet showing the "reason -> plan -> implement" structure using the SharedStore.
+  - **Rollback instructions**: `git checkout HEAD~1 -- examples/workflow.rs README.md`
+
+- **2026-03-07 22:50:00 UTC**: Improved README.md examples and Quickstart section.
+  - **Files modified**: `README.md`
+  - **Reason**: User requested to ensure `README.md` is accurate and helpful. The `MultiAgent` and `MapReduce` examples were pseudo-code. The Quickstart lacked information about the `rig-core` integration used in many examples.
+  - **Previous behavior**: `MultiAgent` and `MapReduce` had non-runnable pseudo-code examples. Quickstart only listed `agentflow`, `tokio`, and `serde_json`.
+  - **New behavior**: `MultiAgent` and `MapReduce` now have full, runnable `tokio::main` examples with closure-based nodes. Quickstart now includes `rig-core` as an optional dependency and clarifies AgentFlow's agnostic orchestration role.
+  - **Rollback instructions**: `git checkout HEAD~1 -- README.md`
+
+- **2026-03-07 23:00:00 UTC**: Fixed examples for new features in README.md.
+  - **Files modified**: `README.md`
+  - **Reason**: User pointed out that the examples for the new capabilities (RPI Workflow, Skill Parser & Tool Node, and MCP Server) were incomplete or missing. 
+  - **Previous behavior**: The `Rust Agentic Skills & MCP` section contained un-runnable pseudo-code snippets.
+  - **New behavior**: The snippets for `RpiWorkflow`, `Skill`, `create_tool_node`, and `McpServer` have been updated into full `tokio::main` blocks to explicitly show how to use them within a valid execution context.
+  - **Rollback instructions**: `git checkout HEAD~1 -- README.md`
+
+- **2026-03-07 23:25:00 UTC**: Added descriptions and architectural diagrams for Rust Agentic Skills & MCP features in README.md.
+  - **Files modified**: `README.md`
+  - **Reason**: User requested the README.md accurately capture the flow and architecture of the newly added capabilities (RPI Workflow, Skill Parser & Tool Node, and MCP Server).
+  - **Previous behavior**: The new features had basic headers and code snippets, but lacked explicit descriptions and visual flow diagrams.
+  - **New behavior**: Added `Description` blocks and `mermaid` flow diagrams for the RPI Workflow, Tool Node execution flow, and MCP Server communication cycle.
+  - **Rollback instructions**: `git checkout HEAD~1 -- README.md`
+
+- **2026-03-07 23:55:00 UTC**: Created document processing example structure.
+  - **Files modified**: `examples/document_processing.rs`, `examples/SKILL_DOC_PROCESS.md`
+  - **Reason**: User requested an example showing a real-world implementation of rust-agentic-skills in a document processing workflow. User approved creating new files in the `examples/` directory.
+  - **Previous behavior**: N/A (Files did not exist).
+  - **New behavior**: Created skeleton for document processing workflow.
+  - **Rollback instructions**: `rm examples/document_processing.rs examples/SKILL_DOC_PROCESS.md`

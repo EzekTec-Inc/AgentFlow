@@ -64,6 +64,11 @@ name = "rust-agentic-skills"
 path = "examples/rust_agentic_skills.rs"
 required-features = ["skills"]
 
+[[example]]
+name = "document-processing"
+path = "examples/document_processing.rs"
+required-features = ["skills"]
+
 [features]
 skills = ["dep:serde_yaml"]
 mcp = ["skills"]

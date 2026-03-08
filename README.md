@@ -40,7 +40,11 @@ Add to your `Cargo.toml`:
 agentflow = "0.1"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
+# Optional: if you plan to use LLMs inside nodes
+rig-core = "0.16" 
 ```
+
+**Note**: AgentFlow is agnostic to the underlying AI logic. It orchestrates nodes (closures/functions). In many examples, we use the `rig` (or `rig-core`) crate inside nodes to handle the actual LLM API calls and prompting.
 
 ---
 
@@ -102,23 +106,42 @@ use std::collections::HashMap;
 #[tokio::main]
 async fn main() {
     let mut workflow = Workflow::new();
-    workflow.add_step("step1", create_node(|mut store| {
+    
+    // Agent 1: Reason
+    workflow.add_step("reason", create_node(|mut store| {
         Box::pin(async move {
-            store.insert("step1".to_string(), "Research done".into());
+            let task = store.get("task").and_then(|v| v.as_str()).unwrap_or("");
+            store.insert("reasoning".to_string(), "Analysis complete".into());
             store.insert("action".to_string(), "default".into());
             store
         })
     }));
-    workflow.add_step("step2", create_node(|mut store| {
-        Box::pin(async move {
-            store.insert("step2".to_string(), "Code generated".into());
-            store.insert("action".to_string(), "default".into());
-            store
-        })
-    }));
-    workflow.connect("step1", "step2");
 
-    let store = HashMap::new();
+    // Agent 2: Plan
+    workflow.add_step("plan", create_node(|mut store| {
+        Box::pin(async move {
+            let reasoning = store.get("reasoning").and_then(|v| v.as_str()).unwrap_or("");
+            store.insert("plan".to_string(), "Implementation plan ready".into());
+            store.insert("action".to_string(), "default".into());
+            store
+        })
+    }));
+
+    // Agent 3: Implement
+    workflow.add_step("implement", create_node(|mut store| {
+        Box::pin(async move {
+            let plan = store.get("plan").and_then(|v| v.as_str()).unwrap_or("");
+            store.insert("output".to_string(), "Code generated".into());
+            store.insert("action".to_string(), "default".into());
+            store
+        })
+    }));
+
+    workflow.connect("reason", "plan");
+    workflow.connect("plan", "implement");
+
+    let mut store = HashMap::new();
+    store.insert("task".to_string(), "Build a rust function".into());
     let result = workflow.run(store).await;
     println!("{:?}", result);
 }
@@ -128,11 +151,13 @@ async fn main() {
 
 ```mermaid
 flowchart LR
-    Start[Start] --> Step1[Node: step1]
-    Step1 --> Step2[Node: step2]
-    Step2 --> End[End]
-    Step1 -- reads/writes --> Store1[SharedStore]
-    Step2 -- reads/writes --> Store2[SharedStore]
+    Start[Start] --> Reason[Node: reason]
+    Reason --> Plan[Node: plan]
+    Plan --> Implement[Node: implement]
+    Implement --> End[End]
+    Reason -- reads/writes --> Store[SharedStore]
+    Plan -- reads/writes --> Store
+    Implement -- reads/writes --> Store
 ```
 
 **Note:** The `"action"` key is reserved by Flow for routing decisions. Nodes should set this key to control which path the workflow takes. The default action is `"default"`.
@@ -148,13 +173,34 @@ flowchart LR
 #### Example
 
 ```rust
-/*!
-Runs multiple agents in parallel, each operating on the same shared store.
-*/
-let mut multi_agent = MultiAgent::new();
-multi_agent.add_agent(agent1);
-multi_agent.add_agent(agent2);
-let result = multi_agent.run(store).await;
+use agentflow::prelude::*;
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn main() {
+    let mut multi_agent = MultiAgent::new();
+
+    let agent1 = create_node(|mut store: SharedStore| {
+        Box::pin(async move {
+            store.insert("agent1_result".to_string(), "Data 1".into());
+            store
+        })
+    });
+
+    let agent2 = create_node(|mut store: SharedStore| {
+        Box::pin(async move {
+            store.insert("agent2_result".to_string(), "Data 2".into());
+            store
+        })
+    });
+
+    multi_agent.add_agent(agent1);
+    multi_agent.add_agent(agent2);
+
+    let store = HashMap::new();
+    let result = multi_agent.run(store).await;
+    println!("{:?}", result);
+}
 ```
 
 #### MultiAgent Flow Diagram
@@ -228,11 +274,37 @@ flowchart LR
 #### Example
 
 ```rust
-/*!
-Batch process documents, summarize each, and aggregate results.
-*/
-let map_reduce = MapReduce::new(batch_mapper, reducer);
-let result = map_reduce.run(inputs).await;
+use agentflow::prelude::*;
+use std::collections::HashMap;
+
+#[tokio::main]
+async fn main() {
+    let mapper = create_node(|mut store: SharedStore| {
+        Box::pin(async move {
+            let item = store.get("item").and_then(|v| v.as_str()).unwrap_or("");
+            store.insert("mapped".to_string(), format!("Processed: {}", item).into());
+            store
+        })
+    });
+
+    let reducer = create_node(|mut store: SharedStore| {
+        Box::pin(async move {
+            // In a real scenario, you'd extract the mapped results and reduce them
+            store.insert("reduced".to_string(), "Aggregation complete".into());
+            store
+        })
+    });
+
+    let map_reduce = MapReduce::new(mapper, reducer);
+    
+    let mut input1 = HashMap::new();
+    input1.insert("item".to_string(), "Doc 1".into());
+    let mut input2 = HashMap::new();
+    input2.insert("item".to_string(), "Doc 2".into());
+    
+    let result = map_reduce.run(vec![input1, input2]).await;
+    println!("{:?}", result);
+}
 ```
 
 #### MapReduce Flow Diagram
@@ -253,40 +325,106 @@ AgentFlow now includes built-in support for the [rust-agentic-skills](https://gi
 
 #### 1. RPI Workflow
 
-A specialized graph orchestrating the **Research -> Plan -> Implement -> Verify** loop.
+**Description:**
+A specialized graph orchestrating the **Research -> Plan -> Implement -> Verify** loop. It wraps the core `Workflow` engine to enforce this specific problem-solving pattern.
 
+**Example:**
 ```rust
+use agentflow::prelude::*;
 use agentflow::patterns::rpi::RpiWorkflow;
+use std::collections::HashMap;
 
-let rpi = RpiWorkflow::new()
-    .with_research(research_node)
-    .with_plan(plan_node)
-    .with_implement(implement_node)
-    .with_verify(verify_node);
+#[tokio::main]
+async fn main() {
+    let research = create_node(|store| Box::pin(async move { store }));
+    let plan = create_node(|store| Box::pin(async move { store }));
+    let implement = create_node(|store| Box::pin(async move { store }));
+    let verify = create_node(|store| Box::pin(async move { store }));
 
-let result = rpi.run(store).await;
+    let rpi = RpiWorkflow::new()
+        .with_research(research)
+        .with_plan(plan)
+        .with_implement(implement)
+        .with_verify(verify);
+
+    let store = HashMap::new();
+    let result = rpi.run(store).await;
+}
+```
+
+**RPI Flow Diagram:**
+```mermaid
+flowchart LR
+    Start[Start] --> Research[Research]
+    Research --> Plan[Plan]
+    Plan --> Implement[Implement]
+    Implement --> Verify[Verify]
+    Verify --> End[End]
+    Research -- reads/writes --> Store[SharedStore]
+    Plan -- reads/writes --> Store
+    Implement -- reads/writes --> Store
+    Verify -- reads/writes --> Store
 ```
 
 #### 2. Skill Parser & Tool Node (requires `skills` feature)
 
-Parse YAML-frontmatter `SKILL.md` files and bind shell tools as workflow nodes.
+**Description:**
+Parse YAML-frontmatter `SKILL.md` files (from the `rust-agentic-skills` standard) and bind local shell tools directly as executable workflow nodes.
 
+**Example:**
 ```rust
+use agentflow::prelude::*;
 use agentflow::skills::Skill;
 use agentflow::utils::tool::create_tool_node;
+use std::collections::HashMap;
 
-let skill = Skill::from_file("SKILL.md").await?;
-let tool = create_tool_node("shell", "bash", vec!["-c".into(), "echo 'Hello'".into()]);
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Requires `skills` feature
+    // let skill = Skill::from_file("SKILL.md").await?;
+    
+    // Bind a shell command directly as an AgentFlow node
+    let tool_node = create_tool_node("shell", "bash", vec!["-c".into(), "echo 'Hello'".into()]);
+    
+    let store = HashMap::new();
+    let result = tool_node.call(store).await;
+    Ok(())
+}
+```
+
+**Tool Node Flow Diagram:**
+```mermaid
+flowchart LR
+    InputStore[SharedStore] --> ToolNode[Tool Node]
+    ToolNode -- executes --> Shell[Host OS Shell]
+    Shell -- returns stdout/stderr --> ToolNode
+    ToolNode --> OutputStore[SharedStore w/ results]
 ```
 
 #### 3. MCP Server (requires `mcp` feature)
 
-Run a minimalist Model Context Protocol server over stdio to expose AgentFlow to MCP-compatible clients.
+**Description:**
+Run a minimalist Model Context Protocol (MCP) server over `stdio` to expose your AgentFlow instances and tools to MCP-compatible LLM clients (like Claude Desktop or cursor).
 
+**Example:**
 ```rust
 use agentflow::mcp::McpServer;
 
-McpServer::new("my-agentflow-tools", "1.0.0").run().await?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Requires `mcp` feature
+    // McpServer::new("my-agentflow-tools", "1.0.0").run().await?;
+    Ok(())
+}
+```
+
+**MCP Flow Diagram:**
+```mermaid
+flowchart LR
+    Client[MCP Client] -- stdio/JSON-RPC --> Server[McpServer]
+    Server -- executes --> AgentFlow
+    AgentFlow -- returns state --> Server
+    Server -- responds --> Client
 ```
 
 ---
@@ -388,7 +526,7 @@ let store = Store::from_shared(shared); // SharedStore -> Store
 
 ---
 
-## 🛠️ Extending PocketFlow
+## 🛠️ Extending AgentFlow
 
 - **Add new agent types**: Implement the `Node` trait.
 - **Compose custom workflows**: Use the `Workflow` or `Flow` API to chain, branch, or parallelize agents.
