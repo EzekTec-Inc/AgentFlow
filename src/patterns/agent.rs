@@ -27,14 +27,13 @@ impl<N> Agent<N> {
         }
     }
 
-    pub async fn decide(
+    pub async fn decide_shared(
         &self,
-        input: std::collections::HashMap<String, serde_json::Value>,
-    ) -> std::collections::HashMap<String, serde_json::Value>
+        shared_store: SharedStore,
+    ) -> SharedStore
     where
         N: Node<SharedStore, SharedStore> + Clone,
     {
-        let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(input));
         let mut result_store = None;
         for attempt in 0..self.max_retries {
             let res = self.node.call(shared_store.clone()).await;
@@ -51,14 +50,20 @@ impl<N> Agent<N> {
                 tokio::time::sleep(tokio::time::Duration::from_millis(self.wait_millis)).await;
             }
         }
-        let result_store = result_store.unwrap_or(shared_store);
-        std::sync::Arc::try_unwrap(result_store).map_or_else(
-            |arc| {
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(async { arc.lock().await.clone() })
-            },
-            |mutex| mutex.into_inner(),
-        )
+        result_store.unwrap_or(shared_store)
+    }
+
+    pub async fn decide(
+        &self,
+        input: std::collections::HashMap<String, serde_json::Value>,
+    ) -> std::collections::HashMap<String, serde_json::Value>
+    where
+        N: Node<SharedStore, SharedStore> + Clone,
+    {
+        let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(input));
+        let result_store = self.decide_shared(shared_store).await;
+        let final_data = result_store.lock().await.clone();
+        final_data
     }
 }
 

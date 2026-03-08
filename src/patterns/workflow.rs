@@ -45,24 +45,27 @@ impl Workflow {
         self.params = params;
     }
 
-    /// Execute the workflow
-    pub async fn execute(
+    /// Execute the workflow and return a SharedStore
+    pub async fn execute_shared(
         &self,
         mut store: std::collections::HashMap<String, serde_json::Value>,
-    ) -> std::collections::HashMap<String, serde_json::Value> {
+    ) -> SharedStore {
         // Merge params into store for parity with Python
         for (k, v) in &self.params {
             store.entry(k.clone()).or_insert(v.clone());
         }
         let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(store));
-        let result_store = self.flow.run(shared_store).await;
-        std::sync::Arc::try_unwrap(result_store).map_or_else(
-            |arc| {
-                let rt = tokio::runtime::Handle::current();
-                rt.block_on(async { arc.lock().await.clone() })
-            },
-            |mutex| mutex.into_inner(),
-        )
+        self.flow.run(shared_store).await
+    }
+
+    /// Execute the workflow
+    pub async fn execute(
+        &self,
+        store: std::collections::HashMap<String, serde_json::Value>,
+    ) -> std::collections::HashMap<String, serde_json::Value> {
+        let result_store = self.execute_shared(store).await;
+        let final_data = result_store.lock().await.clone();
+        final_data
     }
 
     /// Get a node by step name

@@ -90,7 +90,7 @@ where
 
 #[tokio::main]
 async fn main() {
-    let topic = "maple syrup";
+    let topic = "Rust AgentFlow Framework";
     let mut initial_store = HashMap::new();
     initial_store.insert("topic".to_string(), Value::String(topic.to_string()));
 
