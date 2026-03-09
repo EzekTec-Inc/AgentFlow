@@ -142,3 +142,100 @@ impl<T> Default for TypedFlow<T> {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[derive(Debug, Clone)]
+    struct TestState {
+        count: u32,
+        messages: Vec<String>,
+    }
+
+    #[tokio::test]
+    async fn test_typed_flow_execution() {
+        let mut flow = TypedFlow::<TestState>::new().with_max_steps(10);
+        
+        let node_a = create_typed_node(|store: TypedStore<TestState>| async move {
+            {
+                let mut guard = store.inner.write().await;
+                guard.count += 1;
+                let c = guard.count;
+                guard.messages.push(format!("A: {}", c));
+            }
+            store
+        });
+        
+        let node_b = create_typed_node(|store: TypedStore<TestState>| async move {
+            {
+                let mut guard = store.inner.write().await;
+                guard.count += 1;
+                let c = guard.count;
+                guard.messages.push(format!("B: {}", c));
+            }
+            store
+        });
+        
+        flow.add_node("A", node_a);
+        flow.add_node("B", node_b);
+        
+        flow.add_transition("A", |state| {
+            if state.count < 3 {
+                Some("B".to_string())
+            } else {
+                None
+            }
+        });
+        
+        flow.add_transition("B", |_state| {
+            Some("A".to_string())
+        });
+        
+        let state = TestState { count: 0, messages: vec![] };
+        let store = TypedStore::new(state);
+        
+        let final_store = flow.run(store).await;
+        let final_state = final_store.inner.read().await;
+        
+        assert_eq!(final_state.count, 3);
+        assert_eq!(final_state.messages, vec!["A: 1", "B: 2", "A: 3"]);
+    }
+
+    #[tokio::test]
+    async fn test_typed_flow_max_steps_prevents_infinite_loop() {
+        let mut flow = TypedFlow::<TestState>::new().with_max_steps(5);
+        
+        let node_a = create_typed_node(|store: TypedStore<TestState>| async move {
+            {
+                let mut guard = store.inner.write().await;
+                guard.count += 1;
+            }
+            store
+        });
+        
+        let node_b = create_typed_node(|store: TypedStore<TestState>| async move {
+            {
+                let mut guard = store.inner.write().await;
+                guard.count += 1;
+            }
+            store
+        });
+        
+        flow.add_node("A", node_a);
+        flow.add_node("B", node_b);
+        
+        // Infinite loop
+        flow.add_transition("A", |_state| Some("B".to_string()));
+        flow.add_transition("B", |_state| Some("A".to_string()));
+        
+        let state = TestState { count: 0, messages: vec![] };
+        let store = TypedStore::new(state);
+        
+        let final_store = flow.run(store).await;
+        let final_state = final_store.inner.read().await;
+        
+        // Loop stops after 5 steps
+        assert_eq!(final_state.count, 5);
+    }
+}
