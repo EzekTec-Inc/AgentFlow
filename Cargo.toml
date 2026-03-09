@@ -20,11 +20,12 @@ inquire = "0.6"
 qdrant-client = "1.15.0"
 owo-colors = "4"
 serde_yaml = { version = "0.9.34", optional = true }
-tracing = { version = "0.1.44", optional = true }
+tracing = "0.1.41"
 
 [dev-dependencies]
 rig = { package = "rig-core", version = "0.16.0" }
 dotenvy = "0.15.7"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 [[example]]
 name = "agent"
