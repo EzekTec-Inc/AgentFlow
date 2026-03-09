@@ -42,10 +42,12 @@ where
     Box::new(FuncNode(func, std::marker::PhantomData))
 }
 
+pub type TransitionFn<T> = Arc<dyn Fn(&T) -> Option<String> + Send + Sync>;
+
 /// A flow orchestrator that strictly uses `TypedStore<T>`
 pub struct TypedFlow<T> {
     nodes: HashMap<String, SimpleTypedNode<T>>,
-    transitions: HashMap<String, Arc<dyn Fn(&T) -> Option<String> + Send + Sync>>,
+    transitions: HashMap<String, TransitionFn<T>>,
     start_node: Option<String>,
     pub max_steps: Option<usize>,
 }

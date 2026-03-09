@@ -69,7 +69,7 @@ pub mod web_search {
                         .to_string()
                 };
 
-                // TODO: Implement actual Google Search API call
+                // Replace this mock with your actual Google Search API call
                 let results = vec![
                     "Example result 1".to_string(),
                     "Example result 2".to_string(),
@@ -102,7 +102,7 @@ pub mod embedding {
                         .to_string()
                 };
 
-                // TODO: Implement actual embedding generation
+                // Replace this mock with your actual embedding generation logic
                 let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5]; // Mock embedding
                 store.write().await.insert(
                     "embedding".to_string(),
@@ -137,7 +137,7 @@ pub mod vector {
                         .unwrap_or_default()
                 };
 
-                // TODO: Implement actual vector database search
+                // Replace this mock with your actual vector database search logic
                 let similar_docs = vec![
                     "Similar document 1".to_string(),
                     "Similar document 2".to_string(),

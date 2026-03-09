@@ -88,7 +88,7 @@ async fn main() {
     flow.add_edge("triage", "general", "general");
     
     // Test the Routing flow
-    let test_messages = vec![
+    let test_messages = [
         "I need to pay my invoice.",
         "My printer is broken.",
         "Hello, how are you?",
