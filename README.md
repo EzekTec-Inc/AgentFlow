@@ -524,6 +524,40 @@ let store = Store::from_shared(shared); // SharedStore -> Store
 - Enforced validation with `require_*()` methods
 - Cleaner API surface without manual JSON type checking
 
+### TypedFlow & TypedStore
+
+For stricter type safety, `TypedFlow` orchestrates state graphs over a generic, user-defined `TypedStore<T>`, preventing runtime type mismatches.
+
+```rust
+use agentflow::core::{TypedFlow, TypedStore, create_typed_node};
+
+#[derive(Debug, Clone)]
+struct MyState {
+    count: u32,
+}
+
+#[tokio::main]
+async fn main() {
+    // Create a flow for MyState with a maximum of 10 steps
+    let mut flow = TypedFlow::<MyState>::new().with_max_steps(10);
+
+    let node_a = create_typed_node(|store: TypedStore<MyState>| async move {
+        store.inner.write().await.count += 1;
+        store
+    });
+
+    flow.add_node("A", node_a);
+    
+    // Transition based on strongly-typed state
+    flow.add_transition("A", |state| {
+        if state.count < 3 { Some("A".to_string()) } else { None }
+    });
+
+    let final_store = flow.run(TypedStore::new(MyState { count: 0 })).await;
+    println!("Final Count: {}", final_store.inner.read().await.count);
+}
+```
+
 ---
 
 ## 🛠️ Extending AgentFlow
