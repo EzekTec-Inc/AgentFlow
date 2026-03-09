@@ -1,158 +1,153 @@
 /*!
 # Example: orchestrator_with_tools.rs
 
-**Purpose:**
-Demonstrates a Main Orchestrator Agent that manages a Sub-Agent.
-The Sub-Agent operates in a ReAct (Reason + Act) loop, utilizing a
-Tool Node to execute real commands before returning the final
-result to the Orchestrator.
+Real-world orchestrator that delegates to a ReAct sub-agent. The sub-agent
+uses a real shell tool (`uname -a`) and passes the result back to the
+Orchestrator LLM, which then writes a human-readable system summary.
 
-**How it works:**
-1. **Orchestrator**: Receives a complex task, delegates a sub-task to the ReAct Flow.
-2. **ReAct Flow (Sub-Agent)**:
-    - **Reasoner Node**: Decides if it needs a tool or has the final answer.
-    - **Tool Node**: Executes a local shell command (e.g., getting the current date).
-3. **Orchestrator**: Receives the final answer from the Sub-Agent and summarizes it.
+How it works:
+1. Orchestrator (LLM) receives the main task and delegates to the ReAct flow.
+2. ReAct Reasoner (LLM) decides to call the `sysinfo` tool.
+3. Tool executor runs `uname -a` via the built-in create_tool_node.
+4. ReAct Reasoner (LLM) reads the tool output and produces a final answer.
+5. Orchestrator (LLM) formats the answer into a polished report.
+
+Requires: OPENAI_API_KEY
+Run with: cargo run --example orchestrator-with-tools
 */
 
 use agentflow::core::flow::Flow;
 use agentflow::core::node::{create_node, SharedStore};
 use agentflow::utils::tool::create_tool_node;
+use dotenvy::dotenv;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing_subscriber::{fmt, EnvFilter};
+use rig::prelude::*;
+use rig::{completion::Prompt, providers};
+
+const REASONER_SYSTEM: &str =
+    "You are a system-info assistant. You have one tool:\n\
+     - sysinfo: runs `uname -a` and returns the output.\n\
+     Respond with EXACTLY one of:\n\
+       ACTION: sysinfo\n\
+       ANSWER: <your final answer>\n\
+     No other text.";
+
+const ORCHESTRATOR_SYSTEM: &str =
+    "You are a technical report writer. Given a raw sub-agent answer about the current system, \
+     write a brief, friendly 3-sentence summary a non-technical user can understand.";
+
+async fn llm(system: &str, user: &str) -> String {
+    let client = providers::openai::Client::from_env();
+    let agent  = client.agent("gpt-4o-mini").preamble(system).build();
+    match agent.prompt(user).await {
+        Ok(r)  => r,
+        Err(e) => format!("LLM error: {e}"),
+    }
+}
 
 #[tokio::main]
 async fn main() {
-    println!("=== Orchestrator with Tool-Using Sub-Agent Example ===\n");
+    dotenv().ok();
+    fmt().with_env_filter(EnvFilter::new("agentflow=debug,orchestrator_with_tools=debug")).init();
 
-    // ========================================================================
-    // 1. Build the Main Orchestrator Node
-    // ========================================================================
-    let orchestrator_node = create_node(move |store: SharedStore| {
+    println!("=== Orchestrator with Tool-Using Sub-Agent ===\n");
+
+    // ── Main orchestrator node ────────────────────────────────────────────────
+    let orchestrator = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.write().await;
-            let main_task = guard
+            let task = store.read().await
                 .get("main_task")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            println!("[Orchestrator] Received main task: '{}'", main_task);
-            println!("[Orchestrator] Delegating sub-task to the Tool-Using Agent...\n");
 
-            // Set up the context for the sub-agent
-            guard.insert(
-                "sub_task".to_string(),
-                Value::String("Find out the current system date and time.".to_string()),
-            );
-            drop(guard);
+            println!("[Orchestrator] Task: {}", task);
+            println!("[Orchestrator] Delegating to ReAct sub-agent…\n");
 
-            // ----------------------------------------------------------------
-            // 2. Build and run the Sub-Agent Flow (ReAct Pattern)
-            // ----------------------------------------------------------------
-            let mut react_flow = Flow::new();
+            // ── Build the ReAct sub-flow ──────────────────────────────────────
+            let mut react = Flow::new().with_max_steps(10);
 
-            // Reasoner Node: Analyzes the task and decides whether to use the tool
-            let reasoner_node = create_node(|s: SharedStore| {
+            let reasoner = create_node(|s: SharedStore| {
                 Box::pin(async move {
+                    let (task, tool_out) = {
+                        let g = s.read().await;
+                        (
+                            g.get("sub_task").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            g.get("sysinfo_stdout").and_then(|v| v.as_str()).map(|x| x.to_string()),
+                        )
+                    };
+
+                    let user_msg = match &tool_out {
+                        Some(out) => format!("Task: {}\n\nTool output:\n{}", task, out),
+                        None      => format!("Task: {}", task),
+                    };
+
+                    println!("[ReAct Reasoner] Thinking…");
+                    let reply = llm(REASONER_SYSTEM, &user_msg).await;
+                    println!("[ReAct Reasoner] {}", reply.trim());
+
                     let mut g = s.write().await;
-
-                    let task = g
-                        .get("sub_task")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let tool_output = g
-                        .get("date_tool_stdout")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-
-                    println!("  [Sub-Agent] Thinking about task: '{}'", task);
-
-                    if let Some(output) = tool_output {
-                        println!("  [Sub-Agent] Received tool output: '{}'", output.trim());
-                        // We have the answer now
-                        g.insert(
-                            "sub_task_result".to_string(),
-                            Value::String(format!("The system date is {}.", output.trim())),
-                        );
-                        // Emit 'done' to break out of the flow
-                        g.insert("action".to_string(), Value::String("done".to_string()));
+                    if reply.trim().starts_with("ANSWER:") {
+                        let ans = reply.trim().strip_prefix("ANSWER:").unwrap_or("").trim().to_string();
+                        g.insert("sub_answer".to_string(), Value::String(ans));
+                        g.insert("action".to_string(),     Value::String("done".to_string()));
                     } else {
-                        println!("  [Sub-Agent] I need the current date. Calling 'date_tool'.");
+                        // ACTION: sysinfo
                         g.insert("action".to_string(), Value::String("use_tool".to_string()));
                     }
-
                     drop(g);
                     s
                 })
             });
 
-            // Tool Node: A real shell command tool using agentflow's built-in tool node
-            // Note: `create_tool_node` stores its stdout in `{tool_name}_output` -> `date_tool_output`
-            // and emits a "default" action when finished.
-            let date_tool_node = create_tool_node("date_tool", "date", vec![]);
+            // Real tool: runs `uname -a`, output stored as `sysinfo_stdout`
+            let tool = create_tool_node("sysinfo", "uname", vec!["-a".to_string()]);
 
-            react_flow.add_node("reasoner", reasoner_node);
-            react_flow.add_node("tool_executor", date_tool_node);
+            react.add_node("reasoner", reasoner);
+            react.add_node("tool",     tool);
+            react.add_edge("reasoner", "use_tool", "tool");
+            react.add_edge("tool",     "use_tool", "reasoner"); // tool keeps action="use_tool"
 
-            // Edges for the ReAct loop
-            react_flow.add_edge("reasoner", "use_tool", "tool_executor");
-            // Since `create_tool_node` doesn't modify the "action" key, it remains "use_tool".
-            // So we route "use_tool" from tool_executor back to reasoner.
-            react_flow.add_edge("tool_executor", "use_tool", "reasoner");
+            // Inject sub-task into store
+            store.write().await.insert(
+                "sub_task".to_string(),
+                Value::String("Find out the current operating system and kernel version.".to_string()),
+            );
 
-            // Run the sub-agent flow with the shared store
-            let store = react_flow.run(store).await;
+            let store = react.run(store).await;
 
-            // ----------------------------------------------------------------
-            // 3. Orchestrator finalized
-            // ----------------------------------------------------------------
-            let mut guard = store.write().await;
-            let sub_result = guard
-                .get("sub_task_result")
+            // ── Orchestrator summarises the sub-agent result ──────────────────
+            let sub_answer = store.read().await
+                .get("sub_answer")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
+                .unwrap_or("No answer returned.")
                 .to_string();
 
-            println!("\n[Orchestrator] Sub-Agent completed its task.");
-            println!("[Orchestrator] Final Report Compilation:");
-            println!("  Task: {}", main_task);
-            println!("  Result: {}", sub_result);
+            println!("\n[Orchestrator] Sub-agent answer: {}", sub_answer);
+            println!("[Orchestrator] Writing report…");
 
-            guard.insert(
-                "final_report".to_string(),
-                Value::String(format!("Task: {} | Result: {}", main_task, sub_result)),
-            );
-            drop(guard);
+            let report = llm(
+                ORCHESTRATOR_SYSTEM,
+                &format!("Main task: {}\n\nSub-agent answer: {}", task, sub_answer),
+            ).await;
 
+            println!("\n[Orchestrator] Report:\n{}", report.trim());
+            store.write().await.insert("final_report".to_string(), Value::String(report));
             store
         })
     });
 
-    // ========================================================================
-    // 4. Execute the Orchestrator
-    // ========================================================================
     let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
-
-    // Set initial context
-    {
-        let mut guard = store.write().await;
-        guard.insert(
-            "main_task".to_string(),
-            Value::String("Generate a daily system report.".to_string()),
-        );
-    }
-
-    // Since an Agent wraps a single node, we can run our Orchestrator node directly
-    // or wrap it in a Flow. Here we just call it directly as a node.
-    let final_store = orchestrator_node.call(store).await;
-
-    let guard = final_store.write().await;
-    println!("\n=== Final Store Output ===");
-    println!(
-        "Final Report: {:?}",
-        guard.get("final_report").and_then(|v| v.as_str())
+    store.write().await.insert(
+        "main_task".to_string(),
+        Value::String("Generate a daily system status report for the ops team.".to_string()),
     );
+
+    let final_store = orchestrator.call(store).await;
+    let g = final_store.read().await;
+    println!("\n=== Final Report ===\n{}", g.get("final_report").and_then(|v| v.as_str()).unwrap_or(""));
 }

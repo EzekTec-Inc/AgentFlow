@@ -1,6 +1,10 @@
 use crate::core::node::{create_node, SharedStore, SimpleNode};
 use serde_json::Value;
+use std::time::Duration;
 use tokio::process::Command;
+
+/// Default timeout for external tool execution (30 seconds).
+pub const DEFAULT_TOOL_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Creates a node that executes an external shell command or script.
 ///
@@ -8,10 +12,17 @@ use tokio::process::Command;
 /// Instead of writing a complex trait, we simply wrap an OS-level command
 /// in a standard AgentFlow node.
 ///
-/// The command will be executed asynchronously. The standard output (stdout)
-/// and standard error (stderr) will be captured and placed into the SharedStore
-/// under the keys `{tool_name}_stdout` and `{tool_name}_stderr`. The exit status
-/// is stored under `{tool_name}_status`.
+/// The command will be executed asynchronously with a configurable timeout
+/// (default: 30 seconds). The standard output (stdout) and standard error (stderr)
+/// will be captured and placed into the SharedStore under the keys
+/// `{tool_name}_stdout` and `{tool_name}_stderr`. The exit status is stored
+/// under `{tool_name}_status`.
+///
+/// # Timeout
+///
+/// Use [`create_tool_node_with_timeout`] to specify a custom timeout. If the
+/// command does not complete within the timeout, the node writes a timeout error
+/// into the store under `{tool_name}_error` with status `-1`.
 ///
 /// # Security Warning
 ///
@@ -28,6 +39,16 @@ pub fn create_tool_node(
     command: impl Into<String>,
     args: Vec<String>,
 ) -> SimpleNode {
+    create_tool_node_with_timeout(tool_name, command, args, DEFAULT_TOOL_TIMEOUT)
+}
+
+/// Like [`create_tool_node`] but with an explicit timeout duration.
+pub fn create_tool_node_with_timeout(
+    tool_name: impl Into<String>,
+    command: impl Into<String>,
+    args: Vec<String>,
+    timeout: Duration,
+) -> SimpleNode {
     let tool_name = tool_name.into();
     let command = command.into();
 
@@ -40,9 +61,10 @@ pub fn create_tool_node(
             let mut cmd = Command::new(&command);
             cmd.args(&args);
 
-            // Execute the command and capture output
-            match cmd.output().await {
-                Ok(output) => {
+            let result = tokio::time::timeout(timeout, cmd.output()).await;
+
+            match result {
+                Ok(Ok(output)) => {
                     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
                     let status = output.status.code().unwrap_or(-1);
@@ -55,11 +77,23 @@ pub fn create_tool_node(
                         Value::Number(status.into()),
                     );
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     let mut guard = store.write().await;
                     guard.insert(
                         format!("{}_error", tool_name),
                         Value::String(format!("Failed to execute tool '{}': {}", command, e)),
+                    );
+                    guard.insert(format!("{}_status", tool_name), Value::Number((-1).into()));
+                }
+                Err(_elapsed) => {
+                    let mut guard = store.write().await;
+                    guard.insert(
+                        format!("{}_error", tool_name),
+                        Value::String(format!(
+                            "Tool '{}' timed out after {}s",
+                            command,
+                            timeout.as_secs()
+                        )),
                     );
                     guard.insert(format!("{}_status", tool_name), Value::Number((-1).into()));
                 }

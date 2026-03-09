@@ -1,9 +1,11 @@
+use crate::core::error::AgentFlowError;
 use crate::core::typed_store::TypedStore;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use dyn_clone::DynClone;
+use tracing::{debug, warn};
 
 /// Core Node trait for typed state
 pub trait TypedNode<T>: Send + Sync + DynClone {
@@ -85,7 +87,11 @@ impl<T> TypedFlow<T> {
         self.transitions.insert(from.to_string(), Arc::new(transition_fn));
     }
 
-    /// Execute the typed flow
+    /// Execute the typed flow.
+    ///
+    /// If `max_steps` is set and the limit is reached, execution stops silently
+    /// and the current store is returned. Use [`run_safe`](Self::run_safe) to
+    /// receive an explicit error instead.
     pub async fn run(&self, mut store: TypedStore<T>) -> TypedStore<T> {
         let mut current_node_name = if let Some(name) = &self.start_node {
             name.clone()
@@ -98,9 +104,11 @@ impl<T> TypedFlow<T> {
 
         while let Some(node) = self.nodes.get(&current_node_name) {
             if steps >= limit {
+                warn!(steps, limit, "TypedFlow::run exceeded max_steps limit");
                 break;
             }
             steps += 1;
+            debug!(step = steps, node = %current_node_name, "TypedFlow::run executing node");
 
             store = node.call(store).await;
 
@@ -121,6 +129,52 @@ impl<T> TypedFlow<T> {
         }
 
         store
+    }
+
+    /// Execute the typed flow, returning `Err(AgentFlowError::ExecutionLimitExceeded)`
+    /// if `max_steps` is reached, and `Ok(TypedStore<T>)` otherwise.
+    pub async fn run_safe(
+        &self,
+        mut store: TypedStore<T>,
+    ) -> Result<TypedStore<T>, AgentFlowError> {
+        let mut current_node_name = if let Some(name) = &self.start_node {
+            name.clone()
+        } else {
+            return Ok(store);
+        };
+
+        let mut steps = 0;
+        let limit = self.max_steps.unwrap_or(usize::MAX);
+
+        while let Some(node) = self.nodes.get(&current_node_name) {
+            if steps >= limit {
+                warn!(steps, limit, "TypedFlow::run_safe exceeded max_steps limit");
+                return Err(AgentFlowError::ExecutionLimitExceeded(
+                    "TypedFlow execution exceeded max_steps limit".to_string(),
+                ));
+            }
+            steps += 1;
+            debug!(step = steps, node = %current_node_name, "TypedFlow::run_safe executing node");
+
+            store = node.call(store).await;
+
+            let next_node = {
+                let guard = store.inner.read().await;
+                if let Some(transition_fn) = self.transitions.get(&current_node_name) {
+                    transition_fn(&guard)
+                } else {
+                    None
+                }
+            };
+
+            if let Some(next) = next_node {
+                current_node_name = next;
+            } else {
+                break;
+            }
+        }
+
+        Ok(store)
     }
 }
 
@@ -236,8 +290,40 @@ mod tests {
         
         let final_store = flow.run(store).await;
         let final_state = final_store.inner.read().await;
-        
+
         // Loop stops after 5 steps
         assert_eq!(final_state.count, 5);
     }
+
+    #[tokio::test]
+    async fn test_typed_flow_run_safe_returns_error_on_limit() {
+        let mut flow = TypedFlow::<TestState>::new().with_max_steps(3);
+
+        let node_a = create_typed_node(|store: TypedStore<TestState>| async move {
+            store.inner.write().await.count += 1;
+            store
+        });
+
+        let node_b = create_typed_node(|store: TypedStore<TestState>| async move {
+            store.inner.write().await.count += 1;
+            store
+        });
+
+        flow.add_node("A", node_a);
+        flow.add_node("B", node_b);
+
+        // Infinite loop
+        flow.add_transition("A", |_state| Some("B".to_string()));
+        flow.add_transition("B", |_state| Some("A".to_string()));
+
+        let store = TypedStore::new(TestState { count: 0, messages: vec![] });
+
+        let result = flow.run_safe(store).await;
+        assert!(
+            matches!(result, Err(AgentFlowError::ExecutionLimitExceeded(_))),
+            "expected ExecutionLimitExceeded, got {:?}",
+            result
+        );
+    }
 }
+

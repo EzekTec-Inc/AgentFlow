@@ -76,3 +76,36 @@ mcp = ["skills"]
 [[example]]
 name = "error-handling"
 path = "examples/error_handling.rs"
+
+[[example]]
+name = "react"
+path = "examples/react.rs"
+
+[[example]]
+name = "reflection"
+path = "examples/reflection.rs"
+
+[[example]]
+name = "plan-and-execute"
+path = "examples/plan_and_execute.rs"
+
+[[example]]
+name = "routing"
+path = "examples/routing.rs"
+
+[[example]]
+name = "repl"
+path = "examples/repl.rs"
+
+[[example]]
+name = "rpi"
+path = "examples/rpi.rs"
+
+[[example]]
+name = "orchestrator-with-tools"
+path = "examples/orchestrator_with_tools.rs"
+
+[[example]]
+name = "typed-flow"
+path = "examples/typed_flow.rs"
+

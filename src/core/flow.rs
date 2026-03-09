@@ -232,9 +232,10 @@ mod tests {
         let result = result_shared.write().await;
         
         assert!(result.contains_key("error"));
-        assert_eq!(
-            result.get("error").unwrap().as_str().unwrap(),
-            "Flow execution exceeded max_steps limit"
-        );
+        let error_msg = result
+            .get("error")
+            .and_then(|v| v.as_str())
+            .expect("error key should be a string");
+        assert_eq!(error_msg, "Flow execution exceeded max_steps limit");
     }
 }

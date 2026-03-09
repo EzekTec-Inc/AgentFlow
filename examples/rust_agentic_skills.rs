@@ -1,218 +1,214 @@
-use agentflow::core::flow::Flow;
+/*!
+# Example: rust_agentic_skills.rs
+
+Real-world RPI workflow driven by a Skill file and real LLM calls. The skill
+defines the agent's persona and instructions. Each RPI phase (Research, Plan,
+Implement, Verify) calls the LLM with that context.
+
+Domain: generating a Rust CLI tool from a spec using the Skill system.
+
+Requires: OPENAI_API_KEY, `skills` feature
+Run with: cargo run --example rust-agentic-skills --features skills
+*/
+
+use agentflow::core::error::AgentFlowError;
 use agentflow::core::node::{create_node, SharedStore};
 use agentflow::patterns::rpi::RpiWorkflow;
 use agentflow::skills::Skill;
 use agentflow::utils::tool::create_tool_node;
-use agentflow::core::error::AgentFlowError;
+use agentflow::core::flow::Flow;
+use dotenvy::dotenv;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing_subscriber::{fmt, EnvFilter};
+use rig::prelude::*;
+use rig::{completion::Prompt, providers};
 
-/// A simulated LLM that handles Research, Plan, Implement, and Verify phases.
-/// In a real application, you would connect this to Rig, OpenAI, etc.
-async fn simulated_llm(system_prompt: &str, user_prompt: &str) -> String {
-    println!("  [LLM Called] System: {}", system_prompt);
-    println!("  [LLM Called] User: {}", user_prompt);
-
-    if system_prompt.contains("Research") {
-        "Research complete: Cargo requires 'cargo init' to create a new project. We can use the shell tool to run it.".to_string()
-    } else if system_prompt.contains("Plan") {
-        "Plan: 1. Run 'cargo init my_new_project' using the shell tool. 2. Verify creation."
-            .to_string()
-    } else if system_prompt.contains("Implement") {
-        "Implementation output: Command planned. I will execute tool_node.".to_string()
-    } else if system_prompt.contains("Verify") {
-        "Verification: The directory was created successfully.".to_string()
-    } else {
-        "Default response".to_string()
+async fn llm_with_skill(skill_instructions: &str, role: &str, user: &str) -> String {
+    let system = format!("{}\n\nYour current role: {}", skill_instructions, role);
+    let client = providers::openai::Client::from_env();
+    let agent  = client.agent("gpt-4o-mini").preamble(&system).build();
+    match agent.prompt(user).await {
+        Ok(r)  => r,
+        Err(e) => format!("LLM error: {e}"),
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), AgentFlowError> {
-    println!("=== Rust Agentic Skills Example ===");
+    dotenv().ok();
+    fmt().with_env_filter(EnvFilter::new("agentflow=debug,rust_agentic_skills=debug")).init();
 
-    // 1. Create a dummy SKILL.md for the example
+    println!("=== Rust Agentic Skills ===\n");
+
+    // ── Load skill ─────────────────────────────────────────────────────────
     let skill_content = r#"---
-name: Project Generator
-description: Creates a new Rust project
+name: Rust CLI Generator
+description: Generates a minimal Rust CLI tool from a plain-English spec
 version: 1.0.0
 ---
-You are an expert Rust developer. Follow the RPI workflow to create a new Cargo project.
+You are an expert Rust developer focused on writing clean, idiomatic CLI tools.
+Use the clap crate for argument parsing. Output only Rust code — no markdown
+fences, no explanations unless explicitly asked.
 "#;
+
     let skill = Skill::parse(skill_content)?;
-    println!(
-        "Loaded Skill: {} (v{})",
-        skill.name,
-        skill.version.unwrap_or_default()
-    );
-    println!("Description: {}", skill.description);
+    println!("Skill: {} v{}", skill.name, skill.version.as_deref().unwrap_or("?"));
+    println!("Description: {}\n", skill.description);
 
-    // 2. Setup the store
+    let instructions = skill.instructions.clone();
+
+    // ── Store setup ────────────────────────────────────────────────────────
     let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
+    let spec = "A CLI tool called `wordfreq` that reads a text file path from the \
+                command line and prints the top-10 most frequent words with their counts.";
+    store.write().await.insert("spec".to_string(), Value::String(spec.to_string()));
 
-    // Inject the initial prompt
-    {
-        let mut guard = store.write().await;
-        guard.insert(
-            "user_prompt".to_string(),
-            Value::String("Create a new Rust project called my_new_project".to_string()),
-        );
-    }
+    println!("Spec: {}\n", spec);
 
-    // 3. Create RPI workflow nodes using our simulated LLM
-    let research_node = create_node({
-        let skill_instructions = skill.instructions.clone();
-        move |s| {
-            let skill_instructions = skill_instructions.clone();
-            Box::pin(async move {
-                let prompt = {
-                    let guard = s.write().await;
-                    guard
-                        .get("user_prompt")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                };
-
-                let sys = format!("{}\nRole: Research", skill_instructions);
-                let result = simulated_llm(&sys, &prompt).await;
-
-                s.write()
-                    .await
-                    .insert("research_output".to_string(), Value::String(result));
-                s
-            })
-        }
+    // ── Research ────────────────────────────────────────────────────────────
+    let inst = instructions.clone();
+    let research = create_node(move |s: SharedStore| {
+        let inst = inst.clone();
+        Box::pin(async move {
+            let spec = s.read().await.get("spec").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            println!("[Research] Identifying relevant crates and patterns…");
+            let output = llm_with_skill(
+                &inst,
+                "Researcher: identify the Rust crates and stdlib features needed for this spec. Be brief.",
+                &spec,
+            ).await;
+            println!("[Research]\n{}\n", output.trim());
+            s.write().await.insert("research".to_string(), Value::String(output));
+            s.write().await.insert("action".to_string(),   Value::String("default".to_string()));
+            s
+        })
     });
 
-    let plan_node = create_node({
-        let skill_instructions = skill.instructions.clone();
-        move |s| {
-            let skill_instructions = skill_instructions.clone();
-            Box::pin(async move {
-                let research = {
-                    let guard = s.write().await;
-                    guard
-                        .get("research_output")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                };
-
-                let sys = format!("{}\nRole: Plan", skill_instructions);
-                let result = simulated_llm(&sys, &research).await;
-
-                s.write()
-                    .await
-                    .insert("plan_output".to_string(), Value::String(result));
-                s
-            })
-        }
+    // ── Plan ───────────────────────────────────────────────────────────────
+    let inst = instructions.clone();
+    let plan = create_node(move |s: SharedStore| {
+        let inst = inst.clone();
+        Box::pin(async move {
+            let (spec, research) = {
+                let g = s.read().await;
+                (
+                    g.get("spec").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    g.get("research").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                )
+            };
+            println!("[Plan] Producing implementation steps…");
+            let output = llm_with_skill(
+                &inst,
+                "Planner: given the spec and research, list numbered implementation steps (no code).",
+                &format!("Spec: {}\n\nResearch:\n{}", spec, research),
+            ).await;
+            println!("[Plan]\n{}\n", output.trim());
+            s.write().await.insert("plan".to_string(),   Value::String(output));
+            s.write().await.insert("action".to_string(), Value::String("default".to_string()));
+            s
+        })
     });
 
-    let implement_node = create_node({
-        let skill_instructions = skill.instructions.clone();
-        move |s| {
-            let skill_instructions = skill_instructions.clone();
-            Box::pin(async move {
-                let plan = {
-                    let guard = s.write().await;
-                    guard
-                        .get("plan_output")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                };
-
-                let sys = format!("{}\nRole: Implement", skill_instructions);
-                let result = simulated_llm(&sys, &plan).await;
-
-                s.write()
-                    .await
-                    .insert("implement_output".to_string(), Value::String(result));
-                s
-            })
-        }
+    // ── Implement ──────────────────────────────────────────────────────────
+    let inst = instructions.clone();
+    let implement = create_node(move |s: SharedStore| {
+        let inst = inst.clone();
+        Box::pin(async move {
+            let (spec, plan, feedback) = {
+                let g = s.read().await;
+                (
+                    g.get("spec").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    g.get("plan").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    g.get("verify_feedback").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                )
+            };
+            let user = match &feedback {
+                Some(fb) => format!("Spec: {}\nPlan:\n{}\n\nFix based on feedback: {}", spec, plan, fb),
+                None     => format!("Spec: {}\nPlan:\n{}\n\nWrite the code now.", spec, plan),
+            };
+            println!("[Implement] Writing Rust code…");
+            let code = llm_with_skill(&inst, "Implementer: write the Rust source code.", &user).await;
+            println!("[Implement] {} chars of code generated.\n", code.len());
+            s.write().await.insert("code".to_string(),   Value::String(code));
+            s.write().await.insert("action".to_string(), Value::String("default".to_string()));
+            s
+        })
     });
 
-    let verify_node = create_node({
-        let skill_instructions = skill.instructions.clone();
-        move |s| {
-            let skill_instructions = skill_instructions.clone();
-            Box::pin(async move {
-                let impl_out = {
-                    let guard = s.write().await;
-                    guard
-                        .get("implement_output")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string()
-                };
+    // ── Verify ─────────────────────────────────────────────────────────────
+    let inst = instructions.clone();
+    let verify = create_node(move |s: SharedStore| {
+        let inst = inst.clone();
+        Box::pin(async move {
+            let (spec, code) = {
+                let g = s.read().await;
+                (
+                    g.get("spec").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    g.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                )
+            };
+            println!("[Verify] Code-reviewing implementation…");
+            let verdict = llm_with_skill(
+                &inst,
+                "Reviewer: check that the code matches the spec. \
+                 Respond ONLY with PASS or FAIL: <one-sentence reason>.",
+                &format!("Spec: {}\n\nCode:\n{}", spec, code),
+            ).await;
+            println!("[Verify] {}\n", verdict.trim());
 
-                let sys = format!("{}\nRole: Verify", skill_instructions);
-                let result = simulated_llm(&sys, &impl_out).await;
-
-                s.write()
-                    .await
-                    .insert("verify_output".to_string(), Value::String(result));
-                s
-            })
-        }
+            let mut g = s.write().await;
+            if verdict.trim().starts_with("PASS") {
+                g.remove("verify_feedback");
+                g.insert("action".to_string(), Value::String("done".to_string()));
+            } else {
+                let reason = verdict.trim().strip_prefix("FAIL:").unwrap_or("").trim().to_string();
+                g.insert("verify_feedback".to_string(), Value::String(reason));
+                g.insert("action".to_string(), Value::String("reimplement".to_string()));
+            }
+            drop(g);
+            s
+        })
     });
 
-    // 4. Create an external tool node
-    // Let's run a harmless command like "echo" to demonstrate the tool execution
-    let tool_node = create_tool_node(
-        "echo_tool",
-        "echo",
-        vec!["Running my_new_project generation steps...".to_string()],
+    // ── Assemble & run ─────────────────────────────────────────────────────
+    let workflow = RpiWorkflow::new()
+        .with_research(research)
+        .with_plan(plan)
+        .with_implement(implement)
+        .with_verify(verify);
+
+    let store_after_rpi = workflow.run(store).await;
+
+    // ── Optionally echo the generated code via tool node ───────────────────
+    let code_snippet = store_after_rpi.read().await
+        .get("code")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .lines()
+        .take(3)
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    store_after_rpi.write().await.insert(
+        "echo_input".to_string(),
+        Value::String(format!("First 3 lines: {}", code_snippet)),
     );
 
-    // 5. Build the graph
-    let rpi_workflow = RpiWorkflow::new()
-        .with_research(research_node)
-        .with_plan(plan_node)
-        .with_implement(implement_node)
-        .with_verify(verify_node);
-
-    // 6. Execute the workflow
-    println!("\nExecuting RPI Workflow...");
-    let store_after_rpi: SharedStore = rpi_workflow.run(store).await;
-
-    println!("\nExecuting Tool Workflow...");
+    let echo_tool = create_tool_node("echo_tool", "echo", vec!["Skill workflow complete!".to_string()]);
     let mut tool_flow = Flow::new();
-    tool_flow.add_node("tool", tool_node);
-    let final_store: SharedStore = tool_flow.run(store_after_rpi).await;
+    tool_flow.add_node("echo", echo_tool);
+    let final_store = tool_flow.run(store_after_rpi).await;
 
-    // 7. Review the results
-    println!("\n=== Final Store Output ===");
-    let guard = final_store.write().await;
+    // ── Print results ──────────────────────────────────────────────────────
+    let g = final_store.read().await;
+    println!("=== Generated Code ===\n");
+    println!("{}", g.get("code").and_then(|v| v.as_str()).unwrap_or("(no code)"));
 
-    println!(
-        "Research Output: {}",
-        guard.get("research_output").unwrap().as_str().unwrap()
-    );
-    println!(
-        "Plan Output: {}",
-        guard.get("plan_output").unwrap().as_str().unwrap()
-    );
-    println!(
-        "Implement Output: {}",
-        guard.get("implement_output").unwrap().as_str().unwrap()
-    );
-    println!(
-        "Verify Output: {}",
-        guard.get("verify_output").unwrap().as_str().unwrap()
-    );
-
-    // Check tool output
-    if let Some(stdout) = guard.get("echo_tool_stdout") {
-        println!("Tool Output (stdout): {}", stdout.as_str().unwrap().trim());
-    }
-    if let Some(status) = guard.get("echo_tool_status") {
-        println!("Tool Exit Status: {}", status.as_i64().unwrap());
+    if let Some(stdout) = g.get("echo_tool_stdout") {
+        println!("\nTool stdout: {}", stdout.as_str().unwrap_or("").trim());
     }
 
     Ok(())

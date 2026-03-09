@@ -1,8 +1,12 @@
 use crate::core::error::AgentFlowError;
 use crate::skills::Skill;
 use serde_json::{json, Value};
-use std::io::{self, BufRead, Write};
+use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tracing::{debug, warn};
+
+/// Default timeout for MCP tool execution (30 seconds).
+const MCP_TOOL_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Minimalist MCP (Model Context Protocol) Server for AgentFlow.
 /// This reads JSON-RPC requests from stdin, processes them, and writes
@@ -30,15 +34,16 @@ impl McpServer {
     }
 
     /// Runs the server loop, reading from stdin and writing to stdout.
+    /// Uses async I/O throughout — no blocking calls on Tokio worker threads.
     pub async fn run(&self) -> Result<(), AgentFlowError> {
-        let stdin = io::stdin();
-        let mut stdout = io::stdout();
-        let mut handle = stdin.lock();
+        let stdin = tokio::io::stdin();
+        let mut stdout = tokio::io::stdout();
+        let mut reader = BufReader::new(stdin);
         let mut buffer = String::new();
 
         loop {
             buffer.clear();
-            let bytes_read = handle.read_line(&mut buffer)?;
+            let bytes_read = reader.read_line(&mut buffer).await?;
             if bytes_read == 0 {
                 break; // EOF
             }
@@ -112,12 +117,13 @@ impl McpServer {
                             match matched_tool {
                                 Some(tool) => {
                                     debug!(tool = %tool.name, "McpServer executing tool");
-                                    match tokio::process::Command::new(&tool.command)
+
+                                    let exec = tokio::process::Command::new(&tool.command)
                                         .args(&tool.args)
-                                        .output()
-                                        .await
-                                    {
-                                        Ok(output) => {
+                                        .output();
+
+                                    match tokio::time::timeout(MCP_TOOL_TIMEOUT, exec).await {
+                                        Ok(Ok(output)) => {
                                             let stdout_str =
                                                 String::from_utf8_lossy(&output.stdout).to_string();
                                             let stderr_str =
@@ -138,7 +144,7 @@ impl McpServer {
                                                 }
                                             })
                                         }
-                                        Err(e) => {
+                                        Ok(Err(e)) => {
                                             warn!(tool = %tool.name, error = %e, "McpServer tool execution failed");
                                             json!({
                                                 "jsonrpc": "2.0",
@@ -146,6 +152,21 @@ impl McpServer {
                                                 "error": {
                                                     "code": -32000,
                                                     "message": format!("Tool execution failed: {}", e)
+                                                }
+                                            })
+                                        }
+                                        Err(_elapsed) => {
+                                            warn!(tool = %tool.name, "McpServer tool timed out");
+                                            json!({
+                                                "jsonrpc": "2.0",
+                                                "id": id,
+                                                "error": {
+                                                    "code": -32000,
+                                                    "message": format!(
+                                                        "Tool '{}' timed out after {}s",
+                                                        tool.name,
+                                                        MCP_TOOL_TIMEOUT.as_secs()
+                                                    )
                                                 }
                                             })
                                         }
@@ -176,9 +197,10 @@ impl McpServer {
                         }
                     };
 
-                    let response_str = serde_json::to_string(&response)?;
-                    writeln!(stdout, "{}", response_str)?;
-                    stdout.flush()?;
+                    let mut response_str = serde_json::to_string(&response)?;
+                    response_str.push('\n');
+                    stdout.write_all(response_str.as_bytes()).await?;
+                    stdout.flush().await?;
                 }
             } else {
                 // Invalid JSON
@@ -190,9 +212,10 @@ impl McpServer {
                         "message": "Parse error"
                     }
                 });
-                let response_str = serde_json::to_string(&response)?;
-                writeln!(stdout, "{}", response_str)?;
-                stdout.flush()?;
+                let mut response_str = serde_json::to_string(&response)?;
+                response_str.push('\n');
+                stdout.write_all(response_str.as_bytes()).await?;
+                stdout.flush().await?;
             }
         }
 

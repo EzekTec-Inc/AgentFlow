@@ -1,117 +1,133 @@
+/*!
+# Example: react.rs
+
+Real-world ReAct (Reason + Act) agent. The LLM decides each turn whether
+to call a tool or emit a final answer. Tool execution is a real shell command
+(curl-based web fetch is simulated here — swap for any HTTP call).
+
+Requires: OPENAI_API_KEY
+Run with: cargo run --example react
+*/
+
 use agentflow::core::error::AgentFlowError;
 use agentflow::core::flow::Flow;
 use agentflow::core::node::{create_node, SharedStore};
+use dotenvy::dotenv;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing_subscriber::{fmt, EnvFilter};
+use rig::prelude::*;
+use rig::{completion::Prompt, providers};
+
+const SYSTEM: &str = r#"You are a reasoning agent. You have one tool:
+  search(query) — returns a web-search snippet.
+
+Respond with EXACTLY one of:
+  ACTION: search | QUERY: <search query>
+  ANSWER: <final answer>
+
+No other text."#;
+
+fn search(query: &str) -> String {
+    // Replace this body with a real HTTP call (Brave, Tavily, SerpAPI, etc.)
+    format!(
+        "Search snippet for '{}': Vienna is the capital of Austria. \
+         City population ~1.9 M, metro ~2.9 M. Major EU cultural hub.",
+        query
+    )
+}
 
 #[tokio::main]
 async fn main() {
-    fmt()
-        .with_env_filter(EnvFilter::new("agentflow=debug,react=debug"))
-        .init();
+    dotenv().ok();
+    fmt().with_env_filter(EnvFilter::new("agentflow=debug,react=debug")).init();
 
-    // One reason + one tool call = 2 steps per cycle. A max of 20 covers 10 tool loops safely.
-    let mut flow = Flow::new().with_max_steps(20);
+    let mut flow = Flow::new().with_max_steps(20); // 2 steps/cycle → 10 tool calls max
 
-    // 1. Reasoner Node: Decides if a tool is needed or if it can answer.
-    let reasoner_node = create_node(|store: SharedStore| {
+    // ── Reasoner: calls the LLM ──────────────────────────────────────────────
+    let reasoner = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.write().await;
+            let (question, tool_out) = {
+                let g = store.read().await;
+                (
+                    g.get("question").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    g.get("tool_output").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                )
+            };
 
-            let question = guard
-                .get("question")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let tool_output = guard
-                .get("tool_output")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+            let user_msg = match &tool_out {
+                Some(out) => format!("Question: {}\n\nTool output:\n{}", question, out),
+                None      => format!("Question: {}", question),
+            };
 
-            println!("Reasoner: Thinking about question: '{}'", question);
+            println!("\n[Reasoner] Calling LLM...");
+            let client = providers::openai::Client::from_env();
+            let agent  = client.agent("gpt-4o-mini").preamble(SYSTEM).build();
 
-            if let Some(output) = tool_output {
-                println!("Reasoner: Analyzing tool output: '{}'", output);
-                guard.insert(
-                    "final_answer".to_string(),
-                    Value::String(format!("Based on {}, the answer is clear.", output)),
-                );
-                guard.insert("action".to_string(), Value::String("done".to_string()));
+            let reply = match agent.prompt(&user_msg).await {
+                Ok(r)  => r,
+                Err(e) => format!("ANSWER: LLM error — {e}"),
+            };
+            println!("[Reasoner] {}", reply.trim());
+
+            let mut g = store.write().await;
+            if reply.trim().starts_with("ANSWER:") {
+                let ans = reply.trim().strip_prefix("ANSWER:").unwrap_or("").trim().to_string();
+                g.insert("final_answer".to_string(), Value::String(ans));
+                g.insert("action".to_string(),       Value::String("done".to_string()));
             } else {
-                println!("Reasoner: I don't know the answer. I need to use the search tool.");
-                guard.insert(
-                    "tool_name".to_string(),
-                    Value::String("search".to_string()),
-                );
-                guard.insert("tool_query".to_string(), Value::String(question));
-                guard.insert(
-                    "action".to_string(),
-                    Value::String("use_tool".to_string()),
-                );
+                let q = reply.split("QUERY:").nth(1).unwrap_or("").trim().to_string();
+                g.insert("tool_query".to_string(), Value::String(q));
+                g.insert("action".to_string(),     Value::String("use_tool".to_string()));
             }
-
-            drop(guard);
+            drop(g);
             store
         })
     });
 
-    // 2. Tool Node: Executes the requested tool.
-    let tool_node = create_node(|store: SharedStore| {
+    // ── Tool executor ────────────────────────────────────────────────────────
+    let tool_exec = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.write().await;
+            let query = {
+                let g = store.read().await;
+                g.get("tool_query").and_then(|v| v.as_str()).unwrap_or("").to_string()
+            };
+            println!("[Tool] search(\"{}\") …", query);
+            let result = search(&query);
+            println!("[Tool] {}", result);
 
-            if let Some(tool) = guard.get("tool_name").and_then(|v| v.as_str()) {
-                if tool == "search" {
-                    let query = guard
-                        .get("tool_query")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    println!("ToolExecutor: Running 'search' tool for query: '{}'", query);
-                    let simulated_result = format!("Search results for {}", query);
-                    guard.insert(
-                        "tool_output".to_string(),
-                        Value::String(simulated_result),
-                    );
-                }
-            }
-
-            guard.insert("action".to_string(), Value::String("reason".to_string()));
-            drop(guard);
+            let mut g = store.write().await;
+            g.insert("tool_output".to_string(), Value::String(result));
+            g.insert("action".to_string(),      Value::String("reason".to_string()));
+            drop(g);
             store
         })
     });
 
-    flow.add_node("reasoner", reasoner_node);
-    flow.add_node("tool_executor", tool_node);
-
-    flow.add_edge("reasoner", "use_tool", "tool_executor");
-    flow.add_edge("tool_executor", "reason", "reasoner");
-    // If reasoner says "done", it stops as there's no outgoing edge.
+    flow.add_node("reasoner",      reasoner);
+    flow.add_node("tool_executor", tool_exec);
+    flow.add_edge("reasoner",      "use_tool", "tool_executor");
+    flow.add_edge("tool_executor", "reason",   "reasoner");
+    // "done" has no edge → flow stops naturally
 
     let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
-    {
-        let mut guard = store.write().await;
-        guard.insert(
-            "question".to_string(),
-            Value::String("What is the capital of France?".to_string()),
-        );
-    }
+    store.write().await.insert(
+        "question".to_string(),
+        Value::String("What is the capital of Austria and its approximate population?".to_string()),
+    );
 
-    println!("Starting ReAct Pattern...");
+    println!("=== ReAct Agent ===");
+    println!("Question: What is the capital of Austria and its approximate population?\n");
+
     match flow.run_safe(store).await {
-        Ok(final_store) => {
-            let guard = final_store.read().await;
-            if let Some(answer) = guard.get("final_answer").and_then(|v| v.as_str()) {
-                println!("ReAct completed. Final answer: {}", answer);
+        Ok(s) => {
+            if let Some(ans) = s.read().await.get("final_answer").and_then(|v| v.as_str()) {
+                println!("\n[Final Answer] {}", ans);
             }
         }
-        Err(AgentFlowError::ExecutionLimitExceeded(msg)) => {
-            eprintln!("ReAct aborted — step limit exceeded: {}", msg);
-        }
-        Err(e) => eprintln!("ReAct failed: {}", e),
+        Err(AgentFlowError::ExecutionLimitExceeded(msg)) => eprintln!("Step limit hit: {msg}"),
+        Err(e) => eprintln!("Error: {e}"),
     }
 }

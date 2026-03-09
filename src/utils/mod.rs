@@ -109,7 +109,7 @@ pub mod embedding {
                     Value::Array(
                         embedding
                             .into_iter()
-                            .map(|f| Value::Number(serde_json::Number::from_f64(f).unwrap()))
+                            .filter_map(|f| serde_json::Number::from_f64(f).map(Value::Number))
                             .collect(),
                     ),
                 );
