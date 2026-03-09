@@ -72,3 +72,7 @@ required-features = ["skills"]
 [features]
 skills = ["dep:serde_yaml"]
 mcp = ["skills"]
+
+[[example]]
+name = "error-handling"
+path = "examples/error_handling.rs"

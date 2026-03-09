@@ -28,9 +28,14 @@ use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() {
+    fmt()
+        .with_env_filter(EnvFilter::new("agentflow=debug,async_agent=debug"))
+        .init();
+
     // Prepare input for two agents
     let mut store1 = HashMap::new();
     store1.insert(

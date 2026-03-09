@@ -1,6 +1,8 @@
 use crate::core::error::AgentFlowError;
+use crate::skills::Skill;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
+use tracing::{debug, warn};
 
 /// Minimalist MCP (Model Context Protocol) Server for AgentFlow.
 /// This reads JSON-RPC requests from stdin, processes them, and writes
@@ -8,6 +10,7 @@ use std::io::{self, BufRead, Write};
 pub struct McpServer {
     name: String,
     version: String,
+    skills: Vec<Skill>,
 }
 
 impl McpServer {
@@ -15,7 +18,15 @@ impl McpServer {
         Self {
             name: name.into(),
             version: version.into(),
+            skills: Vec::new(),
         }
+    }
+
+    /// Register a loaded `Skill` with this server so it appears in `tools/list`
+    /// and can be dispatched via `tools/call`.
+    pub fn register_skill(mut self, skill: Skill) -> Self {
+        self.skills.push(skill);
+        self
     }
 
     /// Runs the server loop, reading from stdin and writing to stdout.
@@ -40,6 +51,7 @@ impl McpServer {
             if let Ok(request) = serde_json::from_str::<Value>(line) {
                 if let Some(id) = request.get("id") {
                     let method = request.get("method").and_then(|v| v.as_str()).unwrap_or("");
+                    debug!(method, "McpServer received request");
 
                     let response = match method {
                         "initialize" => {
@@ -59,25 +71,98 @@ impl McpServer {
                             })
                         }
                         "tools/list" => {
-                            // Currently returning an empty list of tools.
-                            // In a real implementation, this would list the Skills/Tools available.
+                            let tools: Vec<Value> = self
+                                .skills
+                                .iter()
+                                .flat_map(|skill| {
+                                    skill.tools.iter().flatten().map(move |tool| {
+                                        json!({
+                                            "name": tool.name,
+                                            "description": tool.description,
+                                            "inputSchema": {
+                                                "type": "object",
+                                                "properties": {},
+                                                "required": []
+                                            }
+                                        })
+                                    })
+                                })
+                                .collect();
+                            debug!(count = tools.len(), "McpServer tools/list");
                             json!({
                                 "jsonrpc": "2.0",
                                 "id": id,
                                 "result": {
-                                    "tools": []
+                                    "tools": tools
                                 }
                             })
                         }
                         "tools/call" => {
-                            json!({
-                                "jsonrpc": "2.0",
-                                "id": id,
-                                "error": {
-                                    "code": -32601,
-                                    "message": "Tool execution not yet fully wired to AgentFlow"
+                            let params = request.get("params");
+                            let tool_name = params
+                                .and_then(|p| p.get("name"))
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+
+                            // Find the matching SkillTool across all registered skills
+                            let matched_tool = self.skills.iter().find_map(|skill| {
+                                skill.tools.iter().flatten().find(|t| t.name == tool_name)
+                            });
+
+                            match matched_tool {
+                                Some(tool) => {
+                                    debug!(tool = %tool.name, "McpServer executing tool");
+                                    match tokio::process::Command::new(&tool.command)
+                                        .args(&tool.args)
+                                        .output()
+                                        .await
+                                    {
+                                        Ok(output) => {
+                                            let stdout_str =
+                                                String::from_utf8_lossy(&output.stdout).to_string();
+                                            let stderr_str =
+                                                String::from_utf8_lossy(&output.stderr).to_string();
+                                            let status = output.status.code().unwrap_or(-1);
+                                            json!({
+                                                "jsonrpc": "2.0",
+                                                "id": id,
+                                                "result": {
+                                                    "content": [
+                                                        {
+                                                            "type": "text",
+                                                            "text": stdout_str
+                                                        }
+                                                    ],
+                                                    "stderr": stderr_str,
+                                                    "exitCode": status
+                                                }
+                                            })
+                                        }
+                                        Err(e) => {
+                                            warn!(tool = %tool.name, error = %e, "McpServer tool execution failed");
+                                            json!({
+                                                "jsonrpc": "2.0",
+                                                "id": id,
+                                                "error": {
+                                                    "code": -32000,
+                                                    "message": format!("Tool execution failed: {}", e)
+                                                }
+                                            })
+                                        }
+                                    }
                                 }
-                            })
+                                None => {
+                                    warn!(tool = %tool_name, "McpServer unknown tool requested");
+                                    json!({
+                                        "jsonrpc": "2.0",
+                                        "id": id,
+                                        "error": {
+                                            "code": -32601,
+                                            "message": format!("Unknown tool: {}", tool_name)
+                                        }
+                                    })
+                                }
+                            }
                         }
                         _ => {
                             json!({

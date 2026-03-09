@@ -201,3 +201,14 @@ where
         (**self).call(input)
     }
 }
+
+/// Blanket implementation for boxed result nodes
+impl<I, O> NodeResult<I, O> for Box<dyn NodeResult<I, O>>
+where
+    I: Send + 'static,
+    O: Send + 'static,
+{
+    fn call(&self, input: I) -> Pin<Box<dyn Future<Output = Result<O, AgentFlowError>> + Send + '_>> {
+        (**self).call(input)
+    }
+}

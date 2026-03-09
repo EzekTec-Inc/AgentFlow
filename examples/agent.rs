@@ -27,10 +27,14 @@ use rig::prelude::*;
 use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
+    fmt()
+        .with_env_filter(EnvFilter::new("agentflow=debug,agent=debug"))
+        .init();
 
     let example_prompt = "Write a concise and summarized ode to ai in shakespeare";
     let mut store = HashMap::new();
