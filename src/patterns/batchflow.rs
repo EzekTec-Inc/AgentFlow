@@ -21,7 +21,7 @@ impl BatchFlow {
             let mut wf = self.workflow.clone();
             wf.set_params(params);
             {
-                let mut store = shared.lock().await;
+                let mut store = shared.write().await;
                 for (k, v) in wf.params.iter() {
                     store.entry(k.clone()).or_insert(v.clone());
                 }

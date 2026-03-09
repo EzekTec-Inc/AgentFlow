@@ -437,13 +437,13 @@ For nodes that need explicit error handling, use `NodeResult` trait with `Result
 
 ```rust
 use agentflow::prelude::*;
-use anyhow::Result;
+use agentflow::core::error::AgentFlowError;
 
 let fallible_node = create_result_node(|store: SharedStore| {
     Box::pin(async move {
         let data = store.lock().await;
         if data.contains_key("error_trigger") {
-            return Err(anyhow::anyhow!("Operation failed"));
+            return Err(AgentFlowError::Custom("Operation failed".to_string()));
         }
         drop(data);
 
@@ -454,7 +454,7 @@ let fallible_node = create_result_node(|store: SharedStore| {
 ```
 
 **Key differences:**
-- `create_result_node()` - Returns `ResultNode` that produces `Result<SharedStore, anyhow::Error>`
+- `create_result_node()` - Returns `ResultNode` that produces `Result<SharedStore, AgentFlowError>`
 - `create_node()` - Returns `SimpleNode` that produces `SharedStore` (infallible)
 
 ### MultiAgent MergeStrategy

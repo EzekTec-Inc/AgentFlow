@@ -3,14 +3,14 @@ use agentflow::patterns::rpi::RpiWorkflow;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() {
     // 1. Research Node: Gathers context and information needed for the task
     let research_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             
             let goal = guard.get("goal").and_then(|v| v.as_str()).unwrap_or("Unknown task").to_string();
             println!("Research: Investigating goal: '{}'", goal);
@@ -30,7 +30,7 @@ async fn main() {
     // 2. Plan Node: Decides the step-by-step execution strategy
     let plan_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             
             let context = guard.get("context").and_then(|v| v.as_str()).unwrap_or("").to_string();
             println!("Plan: Formulating a plan based on context: '{}'", context);
@@ -49,7 +49,7 @@ async fn main() {
     // 3. Implement Node: Executes the plan (e.g., writing code, calling tools)
     let implement_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             
             let plan = guard.get("plan").and_then(|v| v.as_str()).unwrap_or("").to_string();
             println!("Implement: Executing plan: '{}'", plan);
@@ -75,7 +75,7 @@ async fn main() {
     // 4. Verify Node: Checks the implementation output
     let verify_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             
             let output = guard.get("implementation_output").and_then(|v| v.as_str()).unwrap_or("");
             println!("Verify: Checking implementation output: '{}'", output);
@@ -102,16 +102,16 @@ async fn main() {
         .with_verify(verify_node);
 
     // Initialize state
-    let store = Arc::new(Mutex::new(HashMap::new()));
+    let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
     {
-        let mut guard = store.lock().await;
+        let mut guard = store.write().await;
         guard.insert("goal".to_string(), Value::String("Create a Rust HTTP server".to_string()));
     }
     
     println!("Starting RPI Workflow Pattern...");
     let final_store = rpi_workflow.run(store).await;
     
-    let guard = final_store.lock().await;
+    let guard = final_store.write().await;
     println!("\nRPI Workflow completed.");
     println!("Final Context: {:?}", guard.get("context").and_then(|v| v.as_str()));
     println!("Final Plan: {:?}", guard.get("plan").and_then(|v| v.as_str()));

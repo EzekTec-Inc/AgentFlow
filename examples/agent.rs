@@ -44,7 +44,7 @@ async fn main() {
     let agent_node = create_node(move |store: SharedStore| {
         Box::pin(async move {
             let prompt = {
-                let guard = store.lock().await;
+                let guard = store.write().await;
                 guard
                     .get("prompt")
                     .and_then(|v| v.as_str())
@@ -64,27 +64,27 @@ async fn main() {
             };
 
             store
-                .lock()
+                .write()
                 .await
                 .insert("response".to_string(), Value::String(response));
             store
         })
     });
 
-    let agent = Agent::with_retry(agent_node, 3, 1000);
+    let agent = Agent::with_retry(agent_node, 3, 1500);
 
     let result = agent.decide(store.clone()).await;
 
     if let Some(response) = result.get("response").and_then(|v| v.as_str()) {
-        println!("[rig-core response]: \n{}\n", response);
+        println!("[llm response]: \n{}\n", response);
     }
 
-    let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(store));
+    let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(store));
     let result_store = agent.call(shared_store).await;
     let result_map = std::sync::Arc::try_unwrap(result_store).map_or_else(
         |arc| {
             let rt = tokio::runtime::Handle::current();
-            rt.block_on(async { arc.lock().await.clone() })
+            rt.block_on(async { arc.write().await.clone() })
         },
         |mutex| mutex.into_inner(),
     );

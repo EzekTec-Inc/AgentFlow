@@ -41,7 +41,7 @@ async fn main() {
         .map(|doc| {
             let mut map = HashMap::new();
             map.insert("doc".to_string(), Value::String(doc.to_string()));
-            Arc::new(tokio::sync::Mutex::new(map))
+            Arc::new(tokio::sync::RwLock::new(map))
         })
         .collect();
 
@@ -49,7 +49,7 @@ async fn main() {
     let mapper = create_node(|store: SharedStore| {
         Box::pin(async move {
             let doc = {
-                let guard = store.lock().await;
+                let guard = store.write().await;
                 guard
                     .get("doc")
                     .and_then(|v| v.as_str())
@@ -70,7 +70,7 @@ async fn main() {
             };
 
             store
-                .lock()
+                .write()
                 .await
                 .insert("summary".to_string(), Value::String(summary));
             store
@@ -83,7 +83,7 @@ async fn main() {
             let mut all_summaries = Vec::new();
             for s in &stores {
                 let summary = {
-                    let guard = s.lock().await;
+                    let guard = s.write().await;
                     guard
                         .get("summary")
                         .and_then(|v| v.as_str())
@@ -98,7 +98,7 @@ async fn main() {
                 "all_summaries".to_string(),
                 Value::String(all_summaries.join("\n")),
             );
-            Arc::new(tokio::sync::Mutex::new(result))
+            Arc::new(tokio::sync::RwLock::new(result))
         })
     });
 
@@ -109,7 +109,7 @@ async fn main() {
     // Run MapReduce
     let result = map_reduce.run(inputs).await;
     let result_map = {
-        let guard = result.lock().await;
+        let guard = result.write().await;
         guard.clone()
     };
 

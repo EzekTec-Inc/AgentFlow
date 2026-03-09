@@ -31,7 +31,7 @@ where
     fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
         Box::pin(async move {
             self.generate(input).await.unwrap_or_else(|_| {
-                std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()))
+                std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()))
             })
         })
     }

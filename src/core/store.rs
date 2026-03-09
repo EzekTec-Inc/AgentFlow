@@ -9,7 +9,7 @@ pub struct Store {
 impl Store {
     pub fn new() -> Self {
         Self {
-            inner: std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            inner: std::sync::Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         }
     }
 
@@ -26,7 +26,7 @@ impl Store {
     }
 
     pub async fn get_string(&self, key: &str) -> Option<String> {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard
             .get(key)
             .and_then(|v| v.as_str())
@@ -34,54 +34,54 @@ impl Store {
     }
 
     pub async fn get_i64(&self, key: &str) -> Option<i64> {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard.get(key).and_then(|v| v.as_i64())
     }
 
     pub async fn get_f64(&self, key: &str) -> Option<f64> {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard.get(key).and_then(|v| v.as_f64())
     }
 
     pub async fn get_bool(&self, key: &str) -> Option<bool> {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard.get(key).and_then(|v| v.as_bool())
     }
 
     pub async fn get(&self, key: &str) -> Option<Value> {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard.get(key).cloned()
     }
 
     pub async fn set_string(&self, key: impl Into<String>, value: impl Into<String>) {
-        let mut guard = self.inner.lock().await;
+        let mut guard = self.inner.write().await;
         guard.insert(key.into(), Value::String(value.into()));
     }
 
     pub async fn set_i64(&self, key: impl Into<String>, value: i64) {
-        let mut guard = self.inner.lock().await;
+        let mut guard = self.inner.write().await;
         guard.insert(key.into(), Value::Number(value.into()));
     }
 
     pub async fn set_f64(&self, key: impl Into<String>, value: f64) {
-        let mut guard = self.inner.lock().await;
+        let mut guard = self.inner.write().await;
         if let Some(num) = serde_json::Number::from_f64(value) {
             guard.insert(key.into(), Value::Number(num));
         }
     }
 
     pub async fn set_bool(&self, key: impl Into<String>, value: bool) {
-        let mut guard = self.inner.lock().await;
+        let mut guard = self.inner.write().await;
         guard.insert(key.into(), Value::Bool(value));
     }
 
     pub async fn set(&self, key: impl Into<String>, value: Value) {
-        let mut guard = self.inner.lock().await;
+        let mut guard = self.inner.write().await;
         guard.insert(key.into(), value);
     }
 
     pub async fn require(&self, key: &str) -> Result<Value, String> {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard
             .get(key)
             .cloned()
@@ -113,32 +113,32 @@ impl Store {
     }
 
     pub async fn contains_key(&self, key: &str) -> bool {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard.contains_key(key)
     }
 
     pub async fn remove(&self, key: &str) -> Option<Value> {
-        let mut guard = self.inner.lock().await;
+        let mut guard = self.inner.write().await;
         guard.remove(key)
     }
 
     pub async fn clear(&self) {
-        let mut guard = self.inner.lock().await;
+        let mut guard = self.inner.write().await;
         guard.clear();
     }
 
     pub async fn keys(&self) -> Vec<String> {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard.keys().cloned().collect()
     }
 
     pub async fn len(&self) -> usize {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard.len()
     }
 
     pub async fn is_empty(&self) -> bool {
-        let guard = self.inner.lock().await;
+        let guard = self.inner.write().await;
         guard.is_empty()
     }
 }

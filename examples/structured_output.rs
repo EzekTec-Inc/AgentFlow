@@ -112,7 +112,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                     println!("Agent 1: Research output:\n{}\n", research);
 
                     store
-                        .lock()
+                        .write()
                         .await
                         .insert("research".to_string(), Value::String(research));
                     store
@@ -126,7 +126,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
         Box::pin(async move {
             println!("Agent 2: Summarizing research with LLM...");
             let research = {
-                let guard = store.lock().await;
+                let guard = store.write().await;
                 guard
                     .get("research")
                     .and_then(|v| v.as_str())
@@ -152,7 +152,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
             println!("Agent 2: Summary output:\n{}\n", summary);
 
             store
-                .lock()
+                .write()
                 .await
                 .insert("summary".to_string(), Value::String(summary));
             store
@@ -164,7 +164,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
         Box::pin(async move {
             println!("Agent 3: Critiquing summary with LLM...");
             let summary = {
-                let guard = store.lock().await;
+                let guard = store.write().await;
                 guard
                     .get("summary")
                     .and_then(|v| v.as_str())
@@ -190,7 +190,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
             println!("Agent 3: Critique output:\n{}\n", critique);
 
             store
-                .lock()
+                .write()
                 .await
                 .insert("critique".to_string(), Value::String(critique));
             store
@@ -204,7 +204,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
         Box::pin(async move {
             println!("Step 4: Structuring and validating output...");
             let (research, summary, critique) = {
-                let guard = store.lock().await;
+                let guard = store.write().await;
                 let research = guard
                     .get("research")
                     .and_then(|v| v.as_str())
@@ -224,7 +224,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
             };
 
             if research.is_empty() || summary.is_empty() || critique.is_empty() {
-                store.lock().await.insert(
+                store.write().await.insert(
                     "error".to_string(),
                     Value::String("Missing required fields".to_string()),
                 );
@@ -240,7 +240,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
                 "timestamp": Utc::now().to_rfc3339(),
             });
             store
-                .lock()
+                .write()
                 .await
                 .insert("structured_output".to_string(), structured.clone());
             println!("Step 4: Output structured and validated.\n");
@@ -267,7 +267,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
     store.insert("topic".to_string(), Value::String(topic.to_string()));
 
     let result = match pipeline
-        .generate(std::sync::Arc::new(tokio::sync::Mutex::new(store)))
+        .generate(std::sync::Arc::new(tokio::sync::RwLock::new(store)))
         .await
     {
         Ok(result_store) => result_store,
@@ -277,7 +277,7 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
         }
     };
 
-    let locked = result.lock().await;
+    let locked = result.write().await;
     if let Some(error) = locked.get("error") {
         println!("=== Pipeline Error ===");
         println!("{}", error);

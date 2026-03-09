@@ -14,7 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         create_node(|store: SharedStore| {
             Box::pin(async move {
                 let file_path = {
-                    let guard = store.lock().await;
+                    let guard = store.write().await;
                     guard
                         .get("input_file")
                         .and_then(|v| v.as_str())
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let is_image = file_path.ends_with(".png") || file_path.ends_with(".jpg");
 
                 {
-                    let mut guard = store.lock().await;
+                    let mut guard = store.write().await;
                     guard.insert(
                         "doc_type".to_string(),
                         Value::String(if is_image {
@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::pin(async move {
                 println!("[Workflow] Extracting from image...");
                 {
-                    let mut guard = store.lock().await;
+                    let mut guard = store.write().await;
                     guard.insert(
                         "extracted_entities".to_string(),
                         Value::String("Mocked OCR text containing entities".into()),
@@ -81,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Mocking LLM response to run example without OPENAI_API_KEY
                 let response = "- Person: John Doe\n- Company: Acme Corp\n- Amount: 5000 USD\n- Date: 2024-01-15".to_string();
 
-                let mut guard = store.lock().await;
+                let mut guard = store.write().await;
                 guard.insert("extracted_entities".to_string(), Value::String(response));
                 guard.insert("action".to_string(), Value::String("analyze_semantics".into()));
                 drop(guard);
@@ -97,12 +97,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         create_node(|store: SharedStore| {
             Box::pin(async move {
                 let retries = {
-                    let guard = store.lock().await;
+                    let guard = store.write().await;
                     guard.get("retries").and_then(|v| v.as_i64()).unwrap_or(0)
                 };
 
                 {
-                    let mut guard = store.lock().await;
+                    let mut guard = store.write().await;
                     if retries < 3 {
                         println!(
                             "[Workflow] Retrying extraction (Attempt {})...",
@@ -128,7 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("[Workflow] Analyzing semantics and assessing extraction quality...");
 
                 let _entities = {
-                    let guard = store.lock().await;
+                    let guard = store.write().await;
                     guard
                         .get("extracted_entities")
                         .and_then(|v| v.as_str())
@@ -142,7 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 match response_result {
                     Ok(response) => {
-                        let mut guard = store.lock().await;
+                        let mut guard = store.write().await;
                         if response.contains("SUCCESS") {
                             guard.insert("semantics".to_string(), Value::String(response.clone()));
                             let doc_type = guard.get("doc_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -157,7 +157,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Err(_) => {
-                        let mut guard = store.lock().await;
+                        let mut guard = store.write().await;
                         guard.insert("action".to_string(), Value::String("fail".into()));
                     }
                 }
@@ -173,7 +173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::pin(async move {
                 println!("[Workflow] Processing Failed.");
                 {
-                    let mut guard = store.lock().await;
+                    let mut guard = store.write().await;
                     guard.insert("action".to_string(), Value::String("default".into()));
                     // End
                 }

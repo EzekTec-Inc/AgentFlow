@@ -85,11 +85,11 @@ async fn main() {
                     };
 
                     store
-                        .lock()
+                        .write()
                         .await
                         .insert("title_search".to_string(), Value::String(response));
                     store
-                        .lock()
+                        .write()
                         .await
                         .insert("action".to_string(), Value::String("default".to_string()));
                     store
@@ -108,7 +108,7 @@ async fn main() {
                 let property_desc = property_desc.clone();
                 async move {
                     let search_result = {
-                        let guard = store.lock().await;
+                        let guard = store.write().await;
                         guard
                             .get("title_search")
                             .and_then(|v| v.as_str())
@@ -132,11 +132,11 @@ async fn main() {
                     };
 
                     store
-                        .lock()
+                        .write()
                         .await
                         .insert("title_issuance".to_string(), Value::String(response));
                     store
-                        .lock()
+                        .write()
                         .await
                         .insert("action".to_string(), Value::String("default".to_string()));
                     store
@@ -149,7 +149,7 @@ async fn main() {
     let legal_review_node = create_node(|store: SharedStore| {
         Box::pin(async move {
             let title_issuance = {
-                let guard = store.lock().await;
+                let guard = store.write().await;
                 guard
                     .get("title_issuance")
                     .and_then(|v| v.as_str())
@@ -173,11 +173,11 @@ async fn main() {
             };
 
             store
-                .lock()
+                .write()
                 .await
                 .insert("legal_review".to_string(), Value::String(response));
             store
-                .lock()
+                .write()
                 .await
                 .insert("action".to_string(), Value::String("default".to_string()));
 
@@ -193,7 +193,7 @@ async fn main() {
     workflow.connect("title_search", "title_issuance");
     workflow.connect("title_issuance", "legal_review");
 
-    let store = std::sync::Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+    let store = std::sync::Arc::new(tokio::sync::RwLock::new(HashMap::new()));
     let mut current_step = Some("title_search".to_string());
     let mut last_result = store.clone();
 
@@ -203,7 +203,7 @@ async fn main() {
         let result = node.call(last_result.clone()).await;
 
         // Present result to user and get action
-        let locked = result.lock().await;
+        let locked = result.write().await;
         let step_result = locked
             .get(&step)
             .cloned()
@@ -213,7 +213,7 @@ async fn main() {
         // Show the result of the last processing before HITL interaction
         let user_action = prompt_user(&step, &step_result);
 
-        let mut locked = result.lock().await;
+        let mut locked = result.write().await;
         match user_action.as_str() {
             "a" | "approve" => {
                 locked.insert("action".to_string(), Value::String("default".to_string()));
@@ -246,7 +246,7 @@ async fn main() {
     println!();
     println!("Workflow complete. Final result:");
     println!("================================");
-    let locked = last_result.lock().await;
+    let locked = last_result.write().await;
     for (k, v) in locked.iter() {
         println!("{}: {}", k, v);
     }

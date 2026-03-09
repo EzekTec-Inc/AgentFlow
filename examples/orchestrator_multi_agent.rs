@@ -31,7 +31,7 @@ use tokio::time::{sleep, Duration};
 
 /// Helper to safely extract a string from the store
 async fn get_string_from_store(store: &SharedStore, key: &str) -> String {
-    let guard = store.lock().await;
+    let guard = store.write().await;
     guard
         .get(key)
         .and_then(|v| v.as_str())
@@ -79,7 +79,7 @@ where
             };
 
             store
-                .lock()
+                .write()
                 .await
                 .insert(output_key.clone(), Value::String(response));
             println!("Completed phase: {}", output_key);

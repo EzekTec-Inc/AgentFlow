@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::core::error::AgentFlowError;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, Write};
 
@@ -19,7 +19,7 @@ impl McpServer {
     }
 
     /// Runs the server loop, reading from stdin and writing to stdout.
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(&self) -> Result<(), AgentFlowError> {
         let stdin = io::stdin();
         let mut stdout = io::stdout();
         let mut handle = stdin.lock();

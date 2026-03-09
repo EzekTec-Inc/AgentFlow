@@ -1,5 +1,5 @@
 use crate::core::node::{Node, SharedStore};
-use futures::future::join_all;
+use futures::stream::{StreamExt};
 use std::future::Future;
 use std::pin::Pin;
 
@@ -39,11 +39,20 @@ where
 #[derive(Clone)]
 pub struct ParallelBatch<N> {
     node: N,
+    concurrency_limit: usize,
 }
 
 impl<N> ParallelBatch<N> {
     pub fn new(node: N) -> Self {
-        Self { node }
+        Self { 
+            node,
+            concurrency_limit: 10, // Default limit
+        }
+    }
+
+    pub fn with_concurrency_limit(mut self, limit: usize) -> Self {
+        self.concurrency_limit = limit;
+        self
     }
 }
 
@@ -56,13 +65,14 @@ where
         input: Vec<SharedStore>,
     ) -> Pin<Box<dyn Future<Output = Vec<SharedStore>> + Send + '_>> {
         let node = self.node.clone();
+        let limit = self.concurrency_limit;
         Box::pin(async move {
-            let futures = input.into_iter().map(|store| {
+            let stream = futures::stream::iter(input.into_iter().map(|store| {
                 let node = node.clone();
                 async move { node.call(store).await }
-            });
+            }));
 
-            join_all(futures).await
+            stream.buffer_unordered(limit).collect().await
         })
     }
 }

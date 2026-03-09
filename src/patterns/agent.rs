@@ -38,7 +38,7 @@ impl<N> Agent<N> {
         for attempt in 0..self.max_retries {
             let res = self.node.call(shared_store.clone()).await;
             let has_error = {
-                let store = res.lock().await;
+                let store = res.write().await;
                 store.contains_key("error")
             };
             if !has_error {
@@ -60,9 +60,9 @@ impl<N> Agent<N> {
     where
         N: Node<SharedStore, SharedStore> + Clone,
     {
-        let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(input));
+        let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(input));
         let result_store = self.decide_shared(shared_store).await;
-        let final_data = result_store.lock().await.clone();
+        let final_data = result_store.write().await.clone();
         final_data
     }
 }

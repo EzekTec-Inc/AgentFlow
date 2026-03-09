@@ -57,7 +57,7 @@ async fn main() {
                     };
 
                     store
-                        .lock()
+                        .write()
                         .await
                         .insert("typescript".to_string(), Value::String(response));
                     store
@@ -88,7 +88,7 @@ async fn main() {
                     };
 
                     store
-                        .lock()
+                        .write()
                         .await
                         .insert("html".to_string(), Value::String(response));
                     store
@@ -121,7 +121,7 @@ async fn main() {
                     };
 
                     store
-                        .lock()
+                        .write()
                         .await
                         .insert("tailwindcss".to_string(), Value::String(response));
                     store
@@ -162,7 +162,7 @@ async fn main() {
 
     // Run all agents concurrently
     let result = multi_agent
-        .run(std::sync::Arc::new(tokio::sync::Mutex::new(store)))
+        .run(std::sync::Arc::new(tokio::sync::RwLock::new(store)))
         .await;
 
     // Stop the progress thread
@@ -170,7 +170,7 @@ async fn main() {
     progress_handle.join().ok();
 
     let result_map = {
-        let guard = result.lock().await;
+        let guard = result.write().await;
         guard.clone()
     };
     println!("=== Space Invader Game Artifacts ===\n");

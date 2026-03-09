@@ -51,7 +51,7 @@ async fn main() {
                 sleep(Duration::from_millis(500)).await;
 
                 let prompt = {
-                    let guard = store.lock().await;
+                    let guard = store.read().await;
                     guard
                         .get("prompt")
                         .and_then(|v| v.as_str())
@@ -71,7 +71,7 @@ async fn main() {
                 };
 
                 store
-                    .lock()
+                    .write()
                     .await
                     .insert("response".to_string(), Value::String(response));
                 store

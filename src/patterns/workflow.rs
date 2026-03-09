@@ -54,7 +54,7 @@ impl Workflow {
         for (k, v) in &self.params {
             store.entry(k.clone()).or_insert(v.clone());
         }
-        let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(store));
+        let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(store));
         self.flow.run(shared_store).await
     }
 
@@ -64,7 +64,7 @@ impl Workflow {
         store: std::collections::HashMap<String, serde_json::Value>,
     ) -> std::collections::HashMap<String, serde_json::Value> {
         let result_store = self.execute_shared(store).await;
-        let final_data = result_store.lock().await.clone();
+        let final_data = result_store.write().await.clone();
         final_data
     }
 
@@ -94,7 +94,7 @@ impl Node<SharedStore, SharedStore> for Workflow {
         let params = self.params.clone();
         Box::pin(async move {
             {
-                let mut store = input.lock().await;
+                let mut store = input.write().await;
                 for (k, v) in &params {
                     store.entry(k.clone()).or_insert(v.clone());
                 }

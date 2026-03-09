@@ -3,12 +3,13 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use crate::core::error::AgentFlowError;
 use std::time::Duration;
 
 use dyn_clone::DynClone;
 
 /// Shared store for communication between nodes
-pub type SharedStore = Arc<tokio::sync::Mutex<HashMap<String, Value>>>;
+pub type SharedStore = Arc<tokio::sync::RwLock<HashMap<String, Value>>>;
 
 /// Core Node trait - handles simple (LLM) tasks
 pub trait Node<I, O>: Send + Sync + DynClone {
@@ -18,7 +19,7 @@ dyn_clone::clone_trait_object!(<I, O> Node<I, O>);
 
 pub trait NodeResult<I, O>: Send + Sync + DynClone {
     fn call(&self, input: I)
-        -> Pin<Box<dyn Future<Output = Result<O, anyhow::Error>> + Send + '_>>;
+        -> Pin<Box<dyn Future<Output = Result<O, AgentFlowError>> + Send + '_>>;
 }
 dyn_clone::clone_trait_object!(<I, O> NodeResult<I, O>);
 
@@ -52,7 +53,7 @@ where
 pub fn create_result_node<F, Fut>(func: F) -> ResultNode
 where
     F: Fn(SharedStore) -> Fut + Send + Sync + Clone + 'static,
-    Fut: Future<Output = Result<SharedStore, anyhow::Error>> + Send + 'static,
+    Fut: Future<Output = Result<SharedStore, AgentFlowError>> + Send + 'static,
 {
     #[derive(Clone)]
     struct ResultFuncNode<F>(F);
@@ -60,12 +61,12 @@ where
     impl<F, Fut> NodeResult<SharedStore, SharedStore> for ResultFuncNode<F>
     where
         F: Fn(SharedStore) -> Fut + Send + Sync + Clone,
-        Fut: Future<Output = Result<SharedStore, anyhow::Error>> + Send + 'static,
+        Fut: Future<Output = Result<SharedStore, AgentFlowError>> + Send + 'static,
     {
         fn call(
             &self,
             input: SharedStore,
-        ) -> Pin<Box<dyn Future<Output = Result<SharedStore, anyhow::Error>> + Send + '_>> {
+        ) -> Pin<Box<dyn Future<Output = Result<SharedStore, AgentFlowError>> + Send + '_>> {
             Box::pin(self.0(input))
         }
     }
@@ -80,13 +81,13 @@ pub fn create_retry_node<PrepF, PrepFut, ExecF, ExecFut, PostF, PostFut>(
     post: PostF,
     max_retries: usize,
     wait_millis: u64,
-    fallback: Option<fn(&SharedStore, &Value, &anyhow::Error) -> SharedStore>,
+    fallback: Option<fn(&SharedStore, &Value, &AgentFlowError) -> SharedStore>,
 ) -> SimpleNode
 where
     PrepF: Fn(SharedStore) -> PrepFut + Send + Sync + Clone + 'static,
     PrepFut: Future<Output = Value> + Send + 'static,
     ExecF: Fn(&SharedStore, &Value) -> ExecFut + Send + Sync + Clone + 'static,
-    ExecFut: Future<Output = Result<Value, anyhow::Error>> + Send + 'static,
+    ExecFut: Future<Output = Result<Value, AgentFlowError>> + Send + 'static,
     PostF: Fn(SharedStore, &Value, &Value) -> PostFut + Send + Sync + Clone + 'static,
     PostFut: Future<Output = SharedStore> + Send + 'static,
 {
@@ -97,7 +98,7 @@ where
         post: PostF,
         max_retries: usize,
         wait_millis: u64,
-        fallback: Option<fn(&SharedStore, &Value, &anyhow::Error) -> SharedStore>,
+        fallback: Option<fn(&SharedStore, &Value, &AgentFlowError) -> SharedStore>,
     }
 
     impl<PrepF, PrepFut, ExecF, ExecFut, PostF, PostFut> Node<SharedStore, SharedStore>
@@ -106,7 +107,7 @@ where
         PrepF: Fn(SharedStore) -> PrepFut + Send + Sync + Clone + 'static,
         PrepFut: Future<Output = Value> + Send + 'static,
         ExecF: Fn(&SharedStore, &Value) -> ExecFut + Send + Sync + Clone + 'static,
-        ExecFut: Future<Output = Result<Value, anyhow::Error>> + Send + 'static,
+        ExecFut: Future<Output = Result<Value, AgentFlowError>> + Send + 'static,
         PostF: Fn(SharedStore, &Value, &Value) -> PostFut + Send + Sync + Clone + 'static,
         PostFut: Future<Output = SharedStore> + Send + 'static,
     {
@@ -122,7 +123,7 @@ where
             let fallback = self.fallback;
             Box::pin(async move {
                 let prep_res = prep(input.clone()).await;
-                let mut last_err: Option<anyhow::Error> = None;
+                let mut last_err: Option<AgentFlowError> = None;
                 let mut exec_res: Option<Value> = None;
                 for attempt in 0..max_retries {
                     match exec(&input, &prep_res).await {

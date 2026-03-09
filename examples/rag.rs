@@ -39,7 +39,7 @@ async fn main() {
     let retriever = create_node(|store: SharedStore| {
         Box::pin(async move {
             let query = {
-                let guard = store.lock().await;
+                let guard = store.write().await;
                 guard
                     .get("query")
                     .and_then(|v| v.as_str())
@@ -57,10 +57,13 @@ async fn main() {
             let client = providers::openai::Client::from_env();
             let rig_agent = client
                 .agent("gpt-4o-mini")
-                .preamble("You are a helpful retrieval agent.")
+                .preamble(&retrieval_prompt)
                 .build();
 
-            let context = match rig_agent.prompt(&retrieval_prompt).await {
+            let context = match rig_agent
+                .prompt("retrieve information based on query given to you in a helpful manner.")
+                .await
+            {
                 Ok(resp) => resp,
                 Err(e) => format!("Error: {}", e),
             };
@@ -68,7 +71,7 @@ async fn main() {
             println!("Retrieved context:\n{}\n", context);
 
             store
-                .lock()
+                .write()
                 .await
                 .insert("context".to_string(), Value::String(context));
             store
@@ -78,7 +81,7 @@ async fn main() {
     let generator = create_node(|store: SharedStore| {
         Box::pin(async move {
             let (query, context) = {
-                let guard = store.lock().await;
+                let guard = store.write().await;
                 let query = guard
                     .get("query")
                     .and_then(|v| v.as_str())
@@ -113,7 +116,7 @@ async fn main() {
             println!("Generated response:\n{}\n", response);
 
             store
-                .lock()
+                .write()
                 .await
                 .insert("response".to_string(), Value::String(response));
             store
@@ -122,11 +125,11 @@ async fn main() {
 
     let rag = Rag::new(retriever, generator);
     let result = rag
-        .call(std::sync::Arc::new(tokio::sync::Mutex::new(store)))
+        .call(std::sync::Arc::new(tokio::sync::RwLock::new(store)))
         .await;
 
     let result_map = {
-        let guard = result.lock().await;
+        let guard = result.write().await;
         guard.clone()
     };
 

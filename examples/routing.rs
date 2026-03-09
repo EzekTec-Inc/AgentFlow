@@ -3,7 +3,7 @@ use agentflow::core::node::{create_node, SharedStore};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() {
@@ -12,7 +12,7 @@ async fn main() {
     // 1. Triage Node: Routes the user request based on intent
     let triage_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             
             let message = guard.get("message").and_then(|v| v.as_str()).unwrap_or("");
             println!("Triage: Analyzing message: '{}'", message);
@@ -39,7 +39,7 @@ async fn main() {
         Box::pin(async move {
             println!("Tech Support Agent: Received request. I specialize in fixing technical issues.");
             
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             guard.insert("response".to_string(), Value::String("Please reboot your computer.".to_string()));
             guard.insert("action".to_string(), Value::String("done".to_string()));
             drop(guard);
@@ -53,7 +53,7 @@ async fn main() {
         Box::pin(async move {
             println!("Billing Agent: Received request. I specialize in accounts and invoices.");
             
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             guard.insert("response".to_string(), Value::String("I will send you a link to your invoice portal.".to_string()));
             guard.insert("action".to_string(), Value::String("done".to_string()));
             drop(guard);
@@ -67,7 +67,7 @@ async fn main() {
         Box::pin(async move {
             println!("General Agent: Received request. How can I help you today?");
             
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             guard.insert("response".to_string(), Value::String("Let me assist you with that.".to_string()));
             guard.insert("action".to_string(), Value::String("done".to_string()));
             drop(guard);
@@ -96,10 +96,10 @@ async fn main() {
 
     for (i, msg) in test_messages.iter().enumerate() {
         println!("\n--- Request {} ---", i + 1);
-        let store = Arc::new(Mutex::new(HashMap::new()));
+        let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
         
         {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             guard.insert("message".to_string(), Value::String(msg.to_string()));
         }
         
@@ -108,7 +108,7 @@ async fn main() {
         // Execute the flow starting at triage node
         final_store = flow.run(final_store).await;
         
-        let guard = final_store.lock().await;
+        let guard = final_store.write().await;
         let response = guard.get("response").and_then(|v| v.as_str()).unwrap_or("");
         println!("Final Output: {}", response);
     }

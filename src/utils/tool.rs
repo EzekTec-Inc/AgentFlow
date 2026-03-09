@@ -47,7 +47,7 @@ pub fn create_tool_node(
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
                     let status = output.status.code().unwrap_or(-1);
 
-                    let mut guard = store.lock().await;
+                    let mut guard = store.write().await;
                     guard.insert(format!("{}_stdout", tool_name), Value::String(stdout));
                     guard.insert(format!("{}_stderr", tool_name), Value::String(stderr));
                     guard.insert(
@@ -56,7 +56,7 @@ pub fn create_tool_node(
                     );
                 }
                 Err(e) => {
-                    let mut guard = store.lock().await;
+                    let mut guard = store.write().await;
                     guard.insert(
                         format!("{}_error", tool_name),
                         Value::String(format!("Failed to execute tool '{}': {}", command, e)),

@@ -65,7 +65,7 @@ impl Flow {
 
         while let Some(node) = self.nodes.get(&current_node_name) {
             if steps >= limit {
-                store.lock().await.insert(
+                store.write().await.insert(
                     "error".to_string(),
                     serde_json::Value::String("Flow execution exceeded max_steps limit".to_string()),
                 );
@@ -76,7 +76,7 @@ impl Flow {
             store = node.call(store).await;
 
             let action = {
-                let guard = store.lock().await;
+                let guard = store.write().await;
                 guard
                     .get("action")
                     .and_then(|v| v.as_str())
@@ -95,7 +95,7 @@ impl Flow {
             }
         }
 
-        store.lock().await.remove("action");
+        store.write().await.remove("action");
         store
     }
 
@@ -150,7 +150,7 @@ mod tests {
         
         let node_a = create_node(|store| async move {
             {
-                let mut guard = store.lock().await;
+                let mut guard = store.write().await;
                 guard.insert("action".to_string(), serde_json::Value::String("to_b".to_string()));
             }
             store
@@ -158,7 +158,7 @@ mod tests {
         
         let node_b = create_node(|store| async move {
             {
-                let mut guard = store.lock().await;
+                let mut guard = store.write().await;
                 guard.insert("action".to_string(), serde_json::Value::String("to_a".to_string()));
             }
             store
@@ -170,10 +170,10 @@ mod tests {
         flow.add_edge("B", "to_a", "A");
         
         let store = HashMap::new();
-        let shared_store = std::sync::Arc::new(tokio::sync::Mutex::new(store));
+        let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(store));
         
         let result_shared = flow.run(shared_store).await;
-        let result = result_shared.lock().await;
+        let result = result_shared.write().await;
         
         assert!(result.contains_key("error"));
         assert_eq!(

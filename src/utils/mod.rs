@@ -31,7 +31,7 @@ pub mod llm {
         create_node(move |store: SharedStore| {
             Box::pin(async move {
                 let prompt = {
-                    let guard = store.lock().await;
+                    let guard = store.write().await;
                     guard
                         .get("prompt")
                         .and_then(|v| v.as_str())
@@ -41,7 +41,7 @@ pub mod llm {
 
                 let response = format!("Mock response to: '{}'", prompt);
                 store
-                    .lock()
+                    .write()
                     .await
                     .insert("response".to_string(), Value::String(response));
                 store
@@ -61,7 +61,7 @@ pub mod web_search {
             let _api_key = api_key.clone();
             Box::pin(async move {
                 let _query = {
-                    let guard = store.lock().await;
+                    let guard = store.write().await;
                     guard
                         .get("query")
                         .and_then(|v| v.as_str())
@@ -74,7 +74,7 @@ pub mod web_search {
                     "Example result 1".to_string(),
                     "Example result 2".to_string(),
                 ];
-                store.lock().await.insert(
+                store.write().await.insert(
                     "search_results".to_string(),
                     Value::Array(results.into_iter().map(Value::String).collect()),
                 );
@@ -94,7 +94,7 @@ pub mod embedding {
         create_node(|store: SharedStore| {
             Box::pin(async move {
                 let _text = {
-                    let guard = store.lock().await;
+                    let guard = store.write().await;
                     guard
                         .get("text")
                         .and_then(|v| v.as_str())
@@ -104,7 +104,7 @@ pub mod embedding {
 
                 // TODO: Implement actual embedding generation
                 let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5]; // Mock embedding
-                store.lock().await.insert(
+                store.write().await.insert(
                     "embedding".to_string(),
                     Value::Array(
                         embedding
@@ -129,7 +129,7 @@ pub mod vector {
         create_node(|store: SharedStore| {
             Box::pin(async move {
                 let _query_embedding = {
-                    let guard = store.lock().await;
+                    let guard = store.write().await;
                     guard
                         .get("query_embedding")
                         .and_then(|v| v.as_array())
@@ -142,7 +142,7 @@ pub mod vector {
                     "Similar document 1".to_string(),
                     "Similar document 2".to_string(),
                 ];
-                store.lock().await.insert(
+                store.write().await.insert(
                     "similar_docs".to_string(),
                     Value::Array(similar_docs.into_iter().map(Value::String).collect()),
                 );
@@ -162,7 +162,7 @@ pub mod chunking {
         create_node(move |store: SharedStore| {
             Box::pin(async move {
                 let text = {
-                    let guard = store.lock().await;
+                    let guard = store.write().await;
                     guard
                         .get("text")
                         .and_then(|v| v.as_str())
@@ -178,7 +178,7 @@ pub mod chunking {
                     .map(|chunk| chunk.iter().collect())
                     .collect();
 
-                store.lock().await.insert(
+                store.write().await.insert(
                     "chunks".to_string(),
                     Value::Array(chunks.into_iter().map(Value::String).collect()),
                 );

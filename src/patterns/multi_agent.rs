@@ -60,15 +60,15 @@ impl MultiAgent {
     async fn run_namespaced(&self, store: SharedStore) -> SharedStore {
         let mut agent_stores = Vec::new();
         for (idx, agent) in self.agents.iter().enumerate() {
-            let input = store.lock().await.clone();
-            let agent_store = std::sync::Arc::new(tokio::sync::Mutex::new(input));
+            let input = store.write().await.clone();
+            let agent_store = std::sync::Arc::new(tokio::sync::RwLock::new(input));
             let result = agent.call(agent_store).await;
             agent_stores.push((idx, result));
         }
 
         for (idx, agent_store) in agent_stores {
-            let agent_data = agent_store.lock().await;
-            let mut merged_store = store.lock().await;
+            let agent_data = agent_store.write().await;
+            let mut merged_store = store.write().await;
             for (key, value) in agent_data.iter() {
                 merged_store.insert(format!("agent_{}.{}", idx, key), value.clone());
             }
@@ -83,8 +83,8 @@ impl MultiAgent {
     ) -> SharedStore {
         let mut results = Vec::new();
         for agent in &self.agents {
-            let input = store.lock().await.clone();
-            let agent_store = std::sync::Arc::new(tokio::sync::Mutex::new(input));
+            let input = store.write().await.clone();
+            let agent_store = std::sync::Arc::new(tokio::sync::RwLock::new(input));
             let result = agent.call(agent_store).await;
             results.push(result);
         }

@@ -3,7 +3,7 @@ use agentflow::core::node::{create_node, SharedStore};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() {
@@ -12,7 +12,7 @@ async fn main() {
     // 1. Planner Node: Breaks a complex task into steps.
     let planner_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             
             // In a real scenario, this would call an LLM to generate the plan.
             let plan = vec![
@@ -32,7 +32,7 @@ async fn main() {
     // 2. Executor Node: Pops the next task and executes it.
     let executor_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             
             let mut next_action = "done".to_string();
             
@@ -62,7 +62,7 @@ async fn main() {
     flow.add_edge("planner", "execute", "executor");
     flow.add_edge("executor", "execute", "executor"); // self-loop for remaining tasks
 
-    let store = Arc::new(Mutex::new(HashMap::new()));
+    let store = Arc::new(RwLock::new(HashMap::new()));
     
     println!("Starting Plan and Execute Pattern...");
     let _final_store = flow.run(store).await;

@@ -4,7 +4,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() {
@@ -20,7 +20,7 @@ async fn main() {
             io::stdin().read_line(&mut input).unwrap();
             let input = input.trim().to_string();
 
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
 
             if input.eq_ignore_ascii_case("exit") || input.eq_ignore_ascii_case("quit") {
                 // Exit the loop by setting an action that has no outgoing edge
@@ -37,7 +37,7 @@ async fn main() {
     // 2. EVALUATE NODE
     let eval_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
 
             if let Some(Value::String(input)) = guard.get("user_input") {
                 // Perform evaluation here (e.g., LLM call, math parsing)
@@ -56,7 +56,7 @@ async fn main() {
     // 3. PRINT NODE
     let print_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
 
             if let Some(Value::String(result)) = guard.get("eval_result") {
                 println!("Result: {}\n", result);
@@ -81,7 +81,7 @@ async fn main() {
     flow.add_edge("print_step", "read", "read_step");
 
     // Initialize the store and set the starting node
-    let store = Arc::new(Mutex::new(HashMap::new()));
+    let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
 
     println!("Starting AgentFlow REPL. Type 'exit' to quit.");
 

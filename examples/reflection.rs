@@ -3,7 +3,7 @@ use agentflow::core::node::{create_node, SharedStore};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 #[tokio::main]
 async fn main() {
@@ -12,7 +12,7 @@ async fn main() {
     // 1. Generator Node: Creates an initial draft or revises it based on feedback.
     let generator_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             
             let attempt = guard
                 .get("attempt")
@@ -42,7 +42,7 @@ async fn main() {
     // 2. Critic Node: Evaluates the draft.
     let critic_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let mut guard = store.lock().await;
+            let mut guard = store.write().await;
             
             let attempt = guard.get("attempt").and_then(|v| v.as_i64()).unwrap_or(1);
             
@@ -76,12 +76,12 @@ async fn main() {
     flow.add_edge("critic", "revise", "generator"); 
     // If approved, the flow naturally terminates as there is no edge for "approve"
 
-    let store = Arc::new(Mutex::new(HashMap::new()));
+    let store = Arc::new(RwLock::new(HashMap::new()));
     
     println!("Starting Reflection Pattern...");
     let final_store = flow.run(store).await;
     
-    let guard = final_store.lock().await;
+    let guard = final_store.write().await;
     let final_draft = guard.get("draft").and_then(|v| v.as_str()).unwrap_or("");
     println!("Reflection completed. Final output: {}", final_draft);
 }

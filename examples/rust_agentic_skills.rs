@@ -3,11 +3,11 @@ use agentflow::core::node::{create_node, SharedStore};
 use agentflow::patterns::rpi::RpiWorkflow;
 use agentflow::skills::Skill;
 use agentflow::utils::tool::create_tool_node;
-use anyhow::Result;
+use agentflow::core::error::AgentFlowError;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 /// A simulated LLM that handles Research, Plan, Implement, and Verify phases.
 /// In a real application, you would connect this to Rig, OpenAI, etc.
@@ -30,7 +30,7 @@ async fn simulated_llm(system_prompt: &str, user_prompt: &str) -> String {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), AgentFlowError> {
     println!("=== Rust Agentic Skills Example ===");
 
     // 1. Create a dummy SKILL.md for the example
@@ -50,11 +50,11 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
     println!("Description: {}", skill.description);
 
     // 2. Setup the store
-    let store: SharedStore = Arc::new(Mutex::new(HashMap::new()));
+    let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
 
     // Inject the initial prompt
     {
-        let mut guard = store.lock().await;
+        let mut guard = store.write().await;
         guard.insert(
             "user_prompt".to_string(),
             Value::String("Create a new Rust project called my_new_project".to_string()),
@@ -68,7 +68,7 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
             let skill_instructions = skill_instructions.clone();
             Box::pin(async move {
                 let prompt = {
-                    let guard = s.lock().await;
+                    let guard = s.write().await;
                     guard
                         .get("user_prompt")
                         .and_then(|v| v.as_str())
@@ -79,7 +79,7 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
                 let sys = format!("{}\nRole: Research", skill_instructions);
                 let result = simulated_llm(&sys, &prompt).await;
 
-                s.lock()
+                s.write()
                     .await
                     .insert("research_output".to_string(), Value::String(result));
                 s
@@ -93,7 +93,7 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
             let skill_instructions = skill_instructions.clone();
             Box::pin(async move {
                 let research = {
-                    let guard = s.lock().await;
+                    let guard = s.write().await;
                     guard
                         .get("research_output")
                         .and_then(|v| v.as_str())
@@ -104,7 +104,7 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
                 let sys = format!("{}\nRole: Plan", skill_instructions);
                 let result = simulated_llm(&sys, &research).await;
 
-                s.lock()
+                s.write()
                     .await
                     .insert("plan_output".to_string(), Value::String(result));
                 s
@@ -118,7 +118,7 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
             let skill_instructions = skill_instructions.clone();
             Box::pin(async move {
                 let plan = {
-                    let guard = s.lock().await;
+                    let guard = s.write().await;
                     guard
                         .get("plan_output")
                         .and_then(|v| v.as_str())
@@ -129,7 +129,7 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
                 let sys = format!("{}\nRole: Implement", skill_instructions);
                 let result = simulated_llm(&sys, &plan).await;
 
-                s.lock()
+                s.write()
                     .await
                     .insert("implement_output".to_string(), Value::String(result));
                 s
@@ -143,7 +143,7 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
             let skill_instructions = skill_instructions.clone();
             Box::pin(async move {
                 let impl_out = {
-                    let guard = s.lock().await;
+                    let guard = s.write().await;
                     guard
                         .get("implement_output")
                         .and_then(|v| v.as_str())
@@ -154,7 +154,7 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
                 let sys = format!("{}\nRole: Verify", skill_instructions);
                 let result = simulated_llm(&sys, &impl_out).await;
 
-                s.lock()
+                s.write()
                     .await
                     .insert("verify_output".to_string(), Value::String(result));
                 s
@@ -188,7 +188,7 @@ You are an expert Rust developer. Follow the RPI workflow to create a new Cargo 
 
     // 7. Review the results
     println!("\n=== Final Store Output ===");
-    let guard = final_store.lock().await;
+    let guard = final_store.write().await;
 
     println!(
         "Research Output: {}",
