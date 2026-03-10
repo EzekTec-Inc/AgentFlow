@@ -26,6 +26,7 @@ tracing = "0.1.41"
 rig = { package = "rig-core", version = "0.16.0" }
 dotenvy = "0.15.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+toml = "1.0"
 
 [[example]]
 name = "agent"
@@ -108,4 +109,8 @@ path = "examples/orchestrator_with_tools.rs"
 [[example]]
 name = "typed-flow"
 path = "examples/typed_flow.rs"
+
+[[example]]
+name = "dynamic-orchestrator"
+path = "examples/dynamic_orchestrator.rs"
 
