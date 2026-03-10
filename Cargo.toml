@@ -108,6 +108,14 @@ name = "rpi"
 path = "examples/rpi.rs"
 
 [[example]]
+name = "plan-and-execute"
+path = "examples/plan_and_execute.rs"
+
+[[example]]
+name = "routing"
+path = "examples/routing.rs"
+
+[[example]]
 name = "orchestrator-with-tools"
 path = "examples/orchestrator_with_tools.rs"
 
