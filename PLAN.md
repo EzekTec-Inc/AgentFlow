@@ -141,3 +141,17 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
   power users edit `examples/agents.toml` to swap models/providers without recompiling.
 * **Rollback:** Delete `examples/dynamic_orchestrator.rs` and `examples/agents.toml`;
   remove `[[example]]` entry from `Cargo.toml` if added.
+
+### Step 4.2: Living Documentation (`DYNAMIC-ORCHESTRATOR.md`)
+* **Timestamp (UTC):** 2026-03-10T03:30:00Z
+* **Summary:** Created `examples/DYNAMIC-ORCHESTRATOR.md` as the canonical reference
+  for how the dynamic orchestrator works.
+* **Files modified:** `examples/DYNAMIC-ORCHESTRATOR.md` ← new file
+* **Exact reason:** Persists the architecture analysis (boot sequence, flow wiring,
+  planner/dispatcher/aggregator behaviour, SharedStore key reference, TOML schema,
+  dependency table, rollback instructions) in the repo so it stays alongside the code.
+* **Maintenance rule:** This document MUST be updated whenever `examples/dynamic_orchestrator.rs`
+  changes in a way that affects observable behaviour.
+* **Previous behaviour:** Analysis existed only in conversation history.
+* **New behaviour:** Analysis lives in `examples/DYNAMIC-ORCHESTRATOR.md`, versioned in git.
+* **Rollback:** `rm examples/DYNAMIC-ORCHESTRATOR.md`
