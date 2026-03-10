@@ -1,13 +1,14 @@
 [package]
 name = "agentflow"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Engr. Stephen Ezekwem <stephen.ezekwem@gmail.com>"]
 edition = "2021"
+rust-version = "1.75"
 license = "MIT OR Apache-2.0"
-description = "A 100-line minimalist LLM framework for Agents, RAG, Workflows, etc."
+description = "Provider-agnostic, async-native Rust framework for building LLM agents, RAG pipelines, workflows, and multi-agent orchestration."
 repository = "https://github.com/EzekTec-Inc/AgentFlow"
 keywords = ["llm", "agent", "rag", "workflow", "async"]
-categories = ["asynchronous", "ai", "AIM Alberta"]
+categories = ["asynchronous", "science"]
 
 [dependencies]
 futures = "0.3.31"
@@ -16,17 +17,25 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.142"
 dyn-clone = "1.0.20"
 chrono = { version = "0.4", features = ["serde"] }
-inquire = "0.6"
-qdrant-client = "1.15.0"
 owo-colors = "4"
-serde_yaml = { version = "0.9.34", optional = true }
 tracing = "0.1.41"
+serde_yaml = { version = "0.9.34", optional = true }
+inquire = { version = "0.6", optional = true }
+qdrant-client = { version = "1.15.0", optional = true }
 
 [dev-dependencies]
 rig = { package = "rig-core", version = "0.16.0" }
 dotenvy = "0.15.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 toml = "1.0"
+inquire = "0.6"
+qdrant-client = "1.15.0"
+
+[features]
+skills = ["dep:serde_yaml"]
+mcp = ["skills"]
+repl = ["dep:inquire"]
+rag = ["dep:qdrant-client"]
 
 [[example]]
 name = "agent"
@@ -70,10 +79,6 @@ name = "document-processing"
 path = "examples/document_processing.rs"
 required-features = ["skills"]
 
-[features]
-skills = ["dep:serde_yaml"]
-mcp = ["skills"]
-
 [[example]]
 name = "error-handling"
 path = "examples/error_handling.rs"
@@ -113,4 +118,3 @@ path = "examples/typed_flow.rs"
 [[example]]
 name = "dynamic-orchestrator"
 path = "examples/dynamic_orchestrator.rs"
-
