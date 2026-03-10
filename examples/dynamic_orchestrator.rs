@@ -113,16 +113,16 @@ fn build_registry(configs: Vec<AgentConfig>) -> HashMap<String, (AgentFactory, S
     let mut registry: HashMap<String, (AgentFactory, String)> = HashMap::new();
 
     for cfg in configs {
-        let provider  = cfg.provider.clone();
-        let model     = cfg.model.clone();
-        let preamble  = cfg.preamble.clone();
+        let provider = cfg.provider.clone();
+        let model = cfg.model.clone();
+        let preamble = cfg.preamble.clone();
         let output_key = cfg.output_key.clone();
-        let name      = cfg.name.clone();
+        let name = cfg.name.clone();
 
         let factory: AgentFactory = Arc::new(move |prompt: String, store: SharedStore| {
-            let provider   = provider.clone();
-            let model      = model.clone();
-            let preamble   = preamble.clone();
+            let provider = provider.clone();
+            let model = model.clone();
+            let preamble = preamble.clone();
             let output_key = output_key.clone();
             Box::pin(async move {
                 println!("[Agent:{}] Running...", output_key);
@@ -167,9 +167,7 @@ const AGGREGATOR_SYSTEM: &str =
 async fn main() {
     dotenv().ok();
     fmt()
-        .with_env_filter(EnvFilter::new(
-            "agentflow=debug,dynamic_orchestrator=debug",
-        ))
+        .with_env_filter(EnvFilter::new("agentflow=debug,dynamic_orchestrator=debug"))
         .init();
 
     println!("=== Dynamic Orchestrator ===\n");
@@ -179,19 +177,17 @@ async fn main() {
 
     if !toml_path.exists() {
         println!("[Boot] examples/agents.toml not found — creating with defaults.\n");
-        std::fs::write(toml_path, DEFAULT_TOML)
-            .expect("Failed to create examples/agents.toml");
+        std::fs::write(toml_path, DEFAULT_TOML).expect("Failed to create examples/agents.toml");
     } else {
         println!("[Boot] Loaded examples/agents.toml\n");
     }
 
-    let toml_str =
-        std::fs::read_to_string(toml_path).expect("Failed to read examples/agents.toml");
+    let toml_str = std::fs::read_to_string(toml_path).expect("Failed to read examples/agents.toml");
 
     let agents_file: AgentsFile =
         toml::from_str(&toml_str).expect("Failed to parse examples/agents.toml");
 
-    let configs     = agents_file.agent;
+    let configs = agents_file.agent;
     let agent_names: Vec<String> = configs.iter().map(|c| c.name.clone()).collect();
 
     println!("[Boot] Available agents: {:?}\n", agent_names);
@@ -218,7 +214,7 @@ async fn main() {
             println!("[Planner] Selecting agents...");
 
             let system = planner_system(&agent_names);
-            let raw    = llm_call("openai", "gpt-4.1-mini", &system, &goal).await;
+            let raw = llm_call("openai", "gpt-4.1-mini", &system, &goal).await;
             println!("[Planner] Raw plan: {}", raw.trim());
 
             let plan: Vec<Value> = serde_json::from_str(raw.trim()).unwrap_or_else(|e| {
@@ -229,9 +225,9 @@ async fn main() {
             println!("[Planner] {} agent(s) selected.", plan.len());
 
             let mut g = store.write().await;
-            g.insert("agent_plan".to_string(),    Value::Array(plan));
+            g.insert("agent_plan".to_string(), Value::Array(plan));
             g.insert("agent_results".to_string(), Value::Array(vec![]));
-            g.insert("action".to_string(),        Value::String("dispatch".to_string()));
+            g.insert("action".to_string(), Value::String("dispatch".to_string()));
             drop(g);
             store
         })
@@ -287,9 +283,7 @@ async fn main() {
                         .to_string();
                     {
                         let mut g = store.write().await;
-                        if let Some(Value::Array(ref mut results)) =
-                            g.get_mut("agent_results")
-                        {
+                        if let Some(Value::Array(ref mut results)) = g.get_mut("agent_results") {
                             results.push(Value::String(format!(
                                 "### {} ({})\n{}",
                                 agent_name, output_key, result
@@ -340,8 +334,7 @@ async fn main() {
                 "Original goal: {}\n\nAgent outputs:\n{}",
                 goal, results_text
             );
-            let report =
-                llm_call("openai", "gpt-4.1-mini", AGGREGATOR_SYSTEM, &user_msg).await;
+            let report = llm_call("openai", "gpt-4.1-mini", AGGREGATOR_SYSTEM, &user_msg).await;
 
             println!("[Aggregator] Report ready.");
             store
@@ -353,15 +346,16 @@ async fn main() {
         })
     });
 
-    flow.add_node("planner",    planner);
+    flow.add_node("planner", planner);
     flow.add_node("dispatcher", dispatcher);
     flow.add_node("aggregator", aggregator);
-    flow.add_edge("planner",    "dispatch",  "dispatcher");
-    flow.add_edge("dispatcher", "dispatch",  "dispatcher"); // self-loop per agent
+    flow.add_edge("planner", "dispatch", "dispatcher");
+    flow.add_edge("dispatcher", "dispatch", "dispatcher"); // self-loop per agent
     flow.add_edge("dispatcher", "aggregate", "aggregator");
 
     // ── Run ───────────────────────────────────────────────────────────────────
-    let goal = "Build a Rust function that fetches a URL and returns the response body as a String.";
+    let goal =
+        "Build a Rust function that fetches a URL and returns the response body as a String.";
 
     let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
     store
