@@ -47,7 +47,7 @@ async fn main() {
                 async move {
                     let openai_client = providers::openai::Client::from_env();
                     let rig_agent = openai_client
-                        .agent("gpt-4o-mini")
+                        .agent("gpt-4.1-mini")
                         .preamble("You are a senior TypeScript game developer.")
                         .build();
 
@@ -78,7 +78,7 @@ async fn main() {
                 async move {
                     let openai_client = providers::openai::Client::from_env();
                     let rig_agent = openai_client
-                        .agent("gpt-4o-mini")
+                        .agent("gpt-4.1-mini")
                         .preamble("You are a senior frontend developer specializing in HTML.")
                         .build();
 
@@ -109,7 +109,7 @@ async fn main() {
                 async move {
                     let gemini_client = providers::gemini::Client::from_env();
                     let rig_agent = gemini_client
-                        .agent("gemini-2.5-pro")
+                        .agent("gemini-3.1-pro")
                         .preamble(
                             "You are a senior frontend developer specializing in TailwindCSS.",
                         )

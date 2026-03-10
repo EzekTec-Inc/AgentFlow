@@ -46,7 +46,7 @@ async fn main() {
     let mut store2 = HashMap::new();
     store2.insert(
         "prompt".to_string(),
-        Value::String("Summarize the benefits of concurrency.".to_string()),
+        Value::String("Summarize the benefits of thread-safety and concurrency.".to_string()),
     );
 
     // Create two rig-instrumented async LLM nodes

@@ -30,7 +30,7 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 async fn llm(system: &str, user: &str) -> String {
     let client = providers::openai::Client::from_env();
-    let agent = client.agent("gpt-4o-mini").preamble(system).build();
+    let agent = client.agent("gpt-4.1-mini").preamble(system).build();
     match agent.prompt(user).await {
         Ok(r) => r,
         Err(e) => format!("LLM error: {e}"),
@@ -40,7 +40,9 @@ async fn llm(system: &str, user: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
-    fmt().with_env_filter(EnvFilter::new("agentflow=debug,document_processing=debug")).init();
+    fmt()
+        .with_env_filter(EnvFilter::new("agentflow=debug,document_processing=debug"))
+        .init();
 
     let mut workflow = Workflow::new();
 
@@ -51,7 +53,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::pin(async move {
                 let file_path = {
                     let g = store.read().await;
-                    g.get("input_file").and_then(|v| v.as_str()).unwrap_or("").to_string()
+                    g.get("input_file")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string()
                 };
                 let is_image = file_path.ends_with(".png")
                     || file_path.ends_with(".jpg")
@@ -64,10 +69,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 println!("[Classify] '{}' → type={}", file_path, doc_type);
+                //NOTE: the write lock is acquired here.
                 let mut g = store.write().await;
                 g.insert("doc_type".to_string(), Value::String(doc_type.to_string()));
-                g.insert("action".to_string(),   Value::String(action.to_string()));
+                g.insert("action".to_string(), Value::String(action.to_string()));
+                //NOTE: dropping the guard to the write lock is important.
                 drop(g);
+
                 store
             })
         }),
@@ -80,7 +88,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::pin(async move {
                 let file_path = {
                     let g = store.read().await;
-                    g.get("input_file").and_then(|v| v.as_str()).unwrap_or("").to_string()
+                    g.get("input_file")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string()
                 };
                 println!("[ExtractImage] Describing image: {}", file_path);
 
@@ -92,13 +103,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                      that might appear in a business document with that name. \
                      Format: bullet list, e.g. '- Person: ...'",
                     &format!("Image file: {}", file_path),
-                ).await;
+                )
+                .await;
 
                 println!("[ExtractImage] Entities:\n{}", entities.trim());
                 let mut g = store.write().await;
                 g.insert("extracted_entities".to_string(), Value::String(entities));
-                g.insert("retries".to_string(),            Value::Number(0.into()));
-                g.insert("action".to_string(),             Value::String("analyze_semantics".to_string()));
+                g.insert("retries".to_string(), Value::Number(0.into()));
+                g.insert(
+                    "action".to_string(),
+                    Value::String("analyze_semantics".to_string()),
+                );
                 drop(g);
                 store
             })
@@ -113,30 +128,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let (file_path, retries) = {
                     let g = store.read().await;
                     (
-                        g.get("input_file").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        g.get("input_file")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
                         g.get("retries").and_then(|v| v.as_u64()).unwrap_or(0),
                     )
                 };
 
                 // Read the file, or fall back to a sample if it doesn't exist
-                let content = tokio::fs::read_to_string(&file_path).await.unwrap_or_else(|_| {
-                    "The contract was signed by Jane Smith on behalf of Globex Ltd \
+                let content = tokio::fs::read_to_string(&file_path)
+                    .await
+                    .unwrap_or_else(|_| {
+                        "The contract was signed by Jane Smith on behalf of Globex Ltd \
                      for 12 500 USD on 2025-06-01. Witnessed by Alan Turing."
-                        .to_string()
-                });
+                            .to_string()
+                    });
 
-                println!("[ExtractText] Attempt {} — extracting entities…", retries + 1);
+                println!(
+                    "[ExtractText] Attempt {} — extracting entities…",
+                    retries + 1
+                );
                 let entities = llm(
                     "You are a named-entity extraction engine for business documents. \
                      Extract all persons, organisations, dates, and monetary amounts. \
                      Format as a bullet list: '- <Type>: <Value>'. Output only the list.",
                     &content,
-                ).await;
+                )
+                .await;
 
                 println!("[ExtractText] Entities:\n{}", entities.trim());
                 let mut g = store.write().await;
                 g.insert("extracted_entities".to_string(), Value::String(entities));
-                g.insert("action".to_string(),             Value::String("analyze_semantics".to_string()));
+                g.insert(
+                    "action".to_string(),
+                    Value::String("analyze_semantics".to_string()),
+                );
                 drop(g);
                 store
             })
@@ -156,7 +183,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if retries < 3 {
                     println!("[Retry] Retry attempt {}…", retries + 1);
                     g.insert("retries".to_string(), Value::Number((retries + 1).into()));
-                    g.insert("action".to_string(),  Value::String("extract_text".to_string()));
+                    g.insert(
+                        "action".to_string(),
+                        Value::String("extract_text".to_string()),
+                    );
                 } else {
                     println!("[Retry] Max retries reached — failing.");
                     g.insert("action".to_string(), Value::String("fail".to_string()));
@@ -175,8 +205,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let (entities, doc_type) = {
                     let g = store.read().await;
                     (
-                        g.get("extracted_entities").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        g.get("doc_type").and_then(|v| v.as_str()).unwrap_or("text").to_string(),
+                        g.get("extracted_entities")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        g.get("doc_type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("text")
+                            .to_string(),
                     )
                 };
 
@@ -195,11 +231,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut g = store.write().await;
                 if assessment.trim().starts_with("SUCCESS") {
                     g.insert("semantics".to_string(), Value::String(assessment.clone()));
-                    let next = if doc_type == "image" { "convert_image" } else { "convert_text" };
+                    let next = if doc_type == "image" {
+                        "convert_image"
+                    } else {
+                        "convert_text"
+                    };
                     g.insert("action".to_string(), Value::String(next.to_string()));
                 } else {
                     println!("[Analyze] Quality check failed — routing to retry.");
-                    g.insert("action".to_string(), Value::String("retry_extract".to_string()));
+                    g.insert(
+                        "action".to_string(),
+                        Value::String("retry_extract".to_string()),
+                    );
                 }
                 drop(g);
                 store
@@ -213,7 +256,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         create_node(|store: SharedStore| {
             Box::pin(async move {
                 println!("[Fail] Document processing failed after max retries.");
-                store.write().await.insert("action".to_string(), Value::String("default".to_string()));
+                store
+                    .write()
+                    .await
+                    .insert("action".to_string(), Value::String("default".to_string()));
                 store
             })
         }),
@@ -238,7 +284,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // (runtime substitution would require a wrapper node — kept simple here)
                 create_tool_node(&tool.name, &tool.command, tool.args.clone())
             } else {
-                println!("[Skill] '{}' not found — using echo mock for '{}'", tool.command, tool.name);
+                println!(
+                    "[Skill] '{}' not found — using echo mock for '{}'",
+                    tool.command, tool.name
+                );
                 create_tool_node(
                     &tool.name,
                     "echo",
@@ -250,31 +299,55 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── Wire graph ────────────────────────────────────────────────────────────
-    workflow.connect_with_action("classify",          "extract_image",    "extract_image");
-    workflow.connect_with_action("classify",          "extract_text",     "extract_text");
-    workflow.connect_with_action("extract_image",     "analyze_semantics","analyze_semantics");
-    workflow.connect_with_action("extract_text",      "analyze_semantics","analyze_semantics");
-    workflow.connect_with_action("analyze_semantics", "convert_text",     "convert_text");
-    workflow.connect_with_action("analyze_semantics", "convert_image",    "convert_image");
-    workflow.connect_with_action("analyze_semantics", "retry_extract",    "retry_extract");
-    workflow.connect_with_action("analyze_semantics", "fail",             "fail");
-    workflow.connect_with_action("retry_extract",     "extract_text",     "extract_text");
-    workflow.connect_with_action("retry_extract",     "fail",             "fail");
-    workflow.connect("convert_text",  "end");
+    workflow.connect_with_action("classify", "extract_image", "extract_image");
+    workflow.connect_with_action("classify", "extract_text", "extract_text");
+    workflow.connect_with_action("extract_image", "analyze_semantics", "analyze_semantics");
+    workflow.connect_with_action("extract_text", "analyze_semantics", "analyze_semantics");
+    workflow.connect_with_action("analyze_semantics", "convert_text", "convert_text");
+    workflow.connect_with_action("analyze_semantics", "convert_image", "convert_image");
+    workflow.connect_with_action("analyze_semantics", "retry_extract", "retry_extract");
+    workflow.connect_with_action("analyze_semantics", "fail", "fail");
+    workflow.connect_with_action("retry_extract", "extract_text", "extract_text");
+    workflow.connect_with_action("retry_extract", "fail", "fail");
+    workflow.connect("convert_text", "end");
     workflow.connect("convert_image", "end");
 
     // ── Run ───────────────────────────────────────────────────────────────────
     let mut store = HashMap::new();
-    store.insert("input_file".to_string(),  Value::String("sample_contract.txt".to_string()));
-    store.insert("output_file".to_string(), Value::String("sample_contract.pdf".to_string()));
+    store.insert(
+        "input_file".to_string(),
+        Value::String("sample_contract.txt".to_string()),
+    );
+    store.insert(
+        "output_file".to_string(),
+        Value::String("sample_contract.pdf".to_string()),
+    );
 
     println!("=== Document Processing Workflow ===\n");
     let result = workflow.execute(store).await;
 
     println!("\n=== Results ===");
-    println!("Type:      {}", result.get("doc_type").and_then(|v| v.as_str()).unwrap_or("?"));
-    println!("Entities:\n{}", result.get("extracted_entities").and_then(|v| v.as_str()).unwrap_or("(none)"));
-    println!("Semantics: {}", result.get("semantics").and_then(|v| v.as_str()).unwrap_or("(none)"));
+    println!(
+        "Type:      {}",
+        result
+            .get("doc_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?")
+    );
+    println!(
+        "Entities:\n{}",
+        result
+            .get("extracted_entities")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(none)")
+    );
+    println!(
+        "Semantics: {}",
+        result
+            .get("semantics")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(none)")
+    );
     for key in &["convert_text_stdout", "convert_image_stdout"] {
         if let Some(out) = result.get(*key).and_then(|v| v.as_str()) {
             println!("Tool output: {}", out.trim());
