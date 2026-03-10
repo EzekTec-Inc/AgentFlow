@@ -4,15 +4,57 @@ use std::future::Future;
 use std::pin::Pin;
 use tracing::{debug, warn};
 
+/// Autonomous async decision-making unit with optional retry logic.
+///
+/// `Agent` wraps any [`Node`] and adds:
+///
+/// - **Retry on error key** ([`decide_shared`]) — reruns the inner node up to
+///   `max_retries` times if the output store contains an `"error"` key.
+/// - **Typed retry** ([`decide_result`]) — works with [`NodeResult`] nodes,
+///   distinguishing transient ([`AgentFlowError::Timeout`]) from fatal errors.
+///
+/// # Choosing a method
+///
+/// | Method | Node type | Error signal | Retry on |
+/// |---|---|---|---|
+/// | [`decide_shared`] | [`Node`] | `"error"` key in store | any `"error"` key |
+/// | [`decide`] | [`Node`] | `"error"` key | any `"error"` key |
+/// | [`decide_result`] | [`NodeResult`] | `Err(AgentFlowError)` | `Timeout` only |
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use agentflow::prelude::*;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let node = create_node(|store: SharedStore| async move {
+///         store.write().await.insert("answer".into(), serde_json::json!(42));
+///         store
+///     });
+///
+///     // 3 retries, 200 ms between attempts
+///     let agent = Agent::with_retry(node, 3, 200);
+///
+///     let store = std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+///     let result = agent.decide_shared(store).await;
+/// }
+/// ```
+///
+/// [`decide_shared`]: Agent::decide_shared
+/// [`decide`]: Agent::decide
+/// [`decide_result`]: Agent::decide_result
 #[derive(Clone)]
-/// Minimal agent pattern - autonomously makes decisions
 pub struct Agent<N> {
     node: N,
+    /// Maximum number of attempts before giving up.
     pub max_retries: usize,
+    /// Milliseconds to wait between retry attempts.
     pub wait_millis: u64,
 }
 
 impl<N> Agent<N> {
+    /// Create an agent with a single attempt and no wait.
     pub fn new(node: N) -> Self {
         Self {
             node,
@@ -21,6 +63,10 @@ impl<N> Agent<N> {
         }
     }
 
+    /// Create an agent with explicit retry settings.
+    ///
+    /// - `max_retries` — total number of attempts (1 = no retries).
+    /// - `wait_millis` — delay between attempts in milliseconds.
     pub fn with_retry(node: N, max_retries: usize, wait_millis: u64) -> Self {
         Self {
             node,
@@ -29,6 +75,11 @@ impl<N> Agent<N> {
         }
     }
 
+    /// Run the inner node with retry, operating on a [`SharedStore`].
+    ///
+    /// Retries when the output store contains an `"error"` key. Returns the
+    /// last store produced (with or without `"error"`) after all attempts are
+    /// exhausted.
     pub async fn decide_shared(
         &self,
         shared_store: SharedStore,
@@ -57,6 +108,12 @@ impl<N> Agent<N> {
         result_store.unwrap_or(shared_store)
     }
 
+    /// Convenience wrapper around [`decide_shared`] that accepts and returns
+    /// a plain `HashMap` instead of a [`SharedStore`].
+    ///
+    /// Useful for top-level callers that don't yet hold an `Arc<RwLock<…>>`.
+    ///
+    /// [`decide_shared`]: Agent::decide_shared
     pub async fn decide(
         &self,
         input: std::collections::HashMap<String, serde_json::Value>,
@@ -70,10 +127,21 @@ impl<N> Agent<N> {
         final_data
     }
 
-    /// Retry loop for a `NodeResult`-based node.
-    /// - `AgentFlowError::Timeout` is treated as transient: retried up to `max_retries`.
-    /// - Any other `AgentFlowError` variant is treated as fatal: returned immediately.
-    pub async fn decide_result<R>(&self, input: SharedStore, node: &R) -> Result<SharedStore, AgentFlowError>
+    /// Run a [`NodeResult`] node with retry, distinguishing transient from fatal errors.
+    ///
+    /// - [`AgentFlowError::Timeout`] → **transient**: retried up to `max_retries` times.
+    /// - Any other [`AgentFlowError`] variant → **fatal**: returned immediately,
+    ///   no further retries.
+    ///
+    /// # Errors
+    ///
+    /// Returns the last [`AgentFlowError`] if all retries are exhausted or a
+    /// fatal error is encountered.
+    pub async fn decide_result<R>(
+        &self,
+        input: SharedStore,
+        node: &R,
+    ) -> Result<SharedStore, AgentFlowError>
     where
         R: NodeResult<SharedStore, SharedStore> + Clone,
     {

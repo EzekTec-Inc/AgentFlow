@@ -1,12 +1,41 @@
 use std::fmt;
 
+/// Unified error type for all AgentFlow operations.
+///
+/// Variants are designed to be actionable — callers can match on the variant
+/// to decide whether to retry, abort, or surface to the user.
+///
+/// # Examples
+///
+/// ```rust
+/// use agentflow::core::error::AgentFlowError;
+///
+/// let err = AgentFlowError::NotFound("prompt key missing".into());
+/// assert_eq!(err.to_string(), "Not found: prompt key missing");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AgentFlowError {
+    /// A required key or resource was not found in the store or registry.
     NotFound(String),
+    /// An operation timed out. Treated as **transient** by [`Agent::decide_result`]
+    /// — it will be retried up to `max_retries` times.
+    ///
+    /// [`Agent::decide_result`]: crate::patterns::agent::Agent::decide_result
     Timeout(String),
+    /// A node produced an unrecoverable failure. Treated as **fatal** by
+    /// [`Agent::decide_result`] — retries are skipped and the error is returned
+    /// immediately.
+    ///
+    /// [`Agent::decide_result`]: crate::patterns::agent::Agent::decide_result
     NodeFailure(String),
+    /// [`Flow::run_safe`] or [`TypedFlow::run_safe`] reached the `max_steps` limit.
+    ///
+    /// [`Flow::run_safe`]: crate::core::flow::Flow::run_safe
+    /// [`TypedFlow::run_safe`]: crate::core::typed_flow::TypedFlow::run_safe
     ExecutionLimitExceeded(String),
+    /// A value in the store had an unexpected type (e.g. expected `i64`, found `String`).
     TypeMismatch(String),
+    /// Any other error that doesn't fit a specific variant above.
     Custom(String),
 }
 

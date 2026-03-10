@@ -5,15 +5,65 @@ use std::future::Future;
 use std::pin::Pin;
 use tracing::{debug, warn};
 
-/// Flow connects nodes through Actions (labeled edges)
+/// A directed graph of [`SimpleNode`]s connected by labeled edges.
+///
+/// `Flow` is the core orchestration primitive. Nodes are vertices; edges are
+/// labeled with *action strings* that nodes write into the `"action"` key of
+/// the [`SharedStore`] to select the next node at runtime.
+///
+/// # Routing
+///
+/// After each node executes, `Flow` reads `store["action"]`. It looks up the
+/// edge `(current_node, action) → next_node`. If no matching edge exists, or
+/// `"action"` is absent, execution stops. The `"action"` key is removed from
+/// the store when the flow completes.
+///
+/// # Cycle prevention
+///
+/// Use [`with_max_steps`](Self::with_max_steps) to cap the total number of node
+/// executions. Choose [`run`](Self::run) (writes `"error"` key on limit) or
+/// [`run_safe`](Self::run_safe) (returns `Err`) depending on whether you need
+/// strict error propagation.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use agentflow::prelude::*;
+/// use std::collections::HashMap;
+/// use std::sync::Arc;
+/// use tokio::sync::RwLock;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let planner = create_node(|store: SharedStore| async move {
+///         store.write().await.insert("action".into(), serde_json::json!("execute"));
+///         store
+///     });
+///     let executor = create_node(|store: SharedStore| async move {
+///         store.write().await.insert("done".into(), serde_json::json!(true));
+///         store
+///     });
+///
+///     let mut flow = Flow::new().with_max_steps(10);
+///     flow.add_node("planner",  planner);
+///     flow.add_node("executor", executor);
+///     flow.add_edge("planner", "execute", "executor");
+///
+///     let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
+///     let result = flow.run(store).await;
+/// }
+/// ```
 pub struct Flow {
     nodes: HashMap<String, SimpleNode>,
-    edges: HashMap<String, HashMap<String, String>>, // from_node -> action -> to_node
+    edges: HashMap<String, HashMap<String, String>>,
     start_node: Option<String>,
+    /// Maximum number of node executions before the flow is forcibly stopped.
+    /// `None` means unlimited (use with care in graphs that may cycle).
     pub max_steps: Option<usize>,
 }
 
 impl Flow {
+    /// Create a new empty flow with no nodes or edges.
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
@@ -23,20 +73,25 @@ impl Flow {
         }
     }
 
-    /// Set a maximum number of steps to prevent infinite loops
+    /// Set the maximum number of node executions to prevent infinite loops.
+    ///
+    /// When the limit is reached, [`run`](Self::run) writes `"error"` into the
+    /// store and halts. [`run_safe`](Self::run_safe) returns
+    /// `Err(AgentFlowError::ExecutionLimitExceeded)` instead.
     pub fn with_max_steps(mut self, limit: usize) -> Self {
         self.max_steps = Some(limit);
         self
     }
 
-    /// Create a flow with a start node
+    /// Create a flow and immediately register `node` as both the first node
+    /// and the start node.
     pub fn with_start(name: &str, node: SimpleNode) -> Self {
         let mut flow = Self::new();
         flow.add_node(name, node);
         flow
     }
 
-    /// Add a node to the flow
+    /// Register a node. The **first** node added becomes the start node.
     pub fn add_node(&mut self, name: &str, node: SimpleNode) {
         if self.start_node.is_none() {
             self.start_node = Some(name.to_string());
@@ -45,16 +100,24 @@ impl Flow {
         self.edges.insert(name.to_string(), HashMap::new());
     }
 
-    /// Connect nodes with an action (labeled edge)
+    /// Add a directed edge: when `from` emits `action`, transition to `to`.
+    ///
+    /// The special action `"default"` is used by [`Workflow::connect`] for
+    /// unconditional transitions.
+    ///
+    /// [`Workflow::connect`]: crate::patterns::workflow::Workflow::connect
     pub fn add_edge(&mut self, from: &str, action: &str, to: &str) {
         self.edges
             .entry(from.to_string())
-            //.or_insert_with(HashMap::new)
             .or_default()
             .insert(action.to_string(), to.to_string());
     }
 
-    /// Execute the flow
+    /// Execute the flow from the start node.
+    ///
+    /// On [`max_steps`](Self::max_steps) exceeded, inserts
+    /// `"error" = "Flow execution exceeded max_steps limit"` into the store
+    /// and returns. Use [`run_safe`](Self::run_safe) for strict error handling.
     pub async fn run(&self, mut store: SharedStore) -> SharedStore {
         let mut current_node_name = if let Some(name) = &self.start_node {
             name.clone()
@@ -105,8 +168,16 @@ impl Flow {
         store
     }
 
-    /// Execute the flow, returning `Err(AgentFlowError::ExecutionLimitExceeded)` if
-    /// `max_steps` is reached, and `Ok(SharedStore)` otherwise.
+    /// Execute the flow, returning `Err(AgentFlowError::ExecutionLimitExceeded)`
+    /// if [`max_steps`](Self::max_steps) is reached.
+    ///
+    /// Prefer this over [`run`](Self::run) when you need to distinguish between
+    /// a natural flow completion and a runaway loop.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AgentFlowError::ExecutionLimitExceeded`] when the step limit
+    /// is exceeded.
     pub async fn run_safe(&self, mut store: SharedStore) -> Result<SharedStore, AgentFlowError> {
         let mut current_node_name = if let Some(name) = &self.start_node {
             name.clone()
@@ -155,10 +226,13 @@ impl Flow {
         Ok(store)
     }
 
+    /// Look up a node by name. Returns `None` if not registered.
     pub fn get_node(&self, name: &str) -> Option<&SimpleNode> {
         self.nodes.get(name)
     }
 
+    /// Returns the name of the node that `from` transitions to when `action` is emitted,
+    /// or `None` if no such edge exists.
     pub fn get_next_step(&self, from: &str, action: &str) -> Option<String> {
         self.edges
             .get(from)
@@ -173,7 +247,6 @@ impl Node<SharedStore, SharedStore> for Flow {
     }
 }
 
-// Implement Clone for Flow by requiring that SimpleNode is Clone
 impl Clone for Flow {
     fn clone(&self) -> Self {
         let mut new_nodes = HashMap::new();
@@ -203,7 +276,7 @@ mod tests {
     #[tokio::test]
     async fn test_max_steps_prevents_infinite_loop() {
         let mut flow = Flow::new().with_max_steps(5);
-        
+
         let node_a = create_node(|store| async move {
             {
                 let mut guard = store.write().await;
@@ -211,7 +284,7 @@ mod tests {
             }
             store
         });
-        
+
         let node_b = create_node(|store| async move {
             {
                 let mut guard = store.write().await;
@@ -219,18 +292,18 @@ mod tests {
             }
             store
         });
-        
+
         flow.add_node("A", node_a);
         flow.add_node("B", node_b);
         flow.add_edge("A", "to_b", "B");
         flow.add_edge("B", "to_a", "A");
-        
+
         let store = HashMap::new();
         let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(store));
-        
+
         let result_shared = flow.run(shared_store).await;
         let result = result_shared.write().await;
-        
+
         assert!(result.contains_key("error"));
         let error_msg = result
             .get("error")

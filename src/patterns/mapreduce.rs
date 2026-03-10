@@ -3,18 +3,68 @@ use crate::core::node::{Node, SharedStore};
 use std::future::Future;
 use std::pin::Pin;
 
+/// Parallel map then sequential reduce over a collection of [`SharedStore`]s.
+///
+/// `MapReduce` is ideal for processing large document sets:
+///
+/// 1. **Map phase** — the `mapper` node is applied to every item in the input
+///    batch sequentially via [`Batch`]. Each item is an independent
+///    [`SharedStore`].
+/// 2. **Reduce phase** — the `reducer` node receives the full
+///    `Vec<SharedStore>` of mapped results and aggregates them into a single
+///    [`SharedStore`].
+///
+/// For parallel mapping, wrap your mapper in a [`ParallelBatch`] and supply it
+/// to `MapReduce::new` — the constructor accepts any `M: Node<SharedStore, SharedStore>`.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use agentflow::prelude::*;
+/// use std::collections::HashMap;
+/// use std::sync::Arc;
+/// use tokio::sync::RwLock;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let mapper = create_node(|store: SharedStore| async move {
+///         // summarise store["text"] → store["summary"]
+///         store
+///     });
+///
+///     let reducer = create_batch_node(|stores: Vec<SharedStore>| async move {
+///         // merge all store["summary"] into a single store
+///         let out: SharedStore = Arc::new(RwLock::new(HashMap::new()));
+///         out.write().await.insert("total".into(), serde_json::json!(stores.len()));
+///         out
+///     });
+///
+///     let mr = MapReduce::new(Batch::new(mapper), reducer);
+///
+///     let inputs: Vec<SharedStore> = (0..5)
+///         .map(|_| Arc::new(RwLock::new(HashMap::new())))
+///         .collect();
+///
+///     let result = mr.run(inputs).await;
+/// }
+/// ```
+///
+/// [`ParallelBatch`]: crate::core::batch::ParallelBatch
 #[derive(Clone)]
-/// MapReduce splits data tasks into Map and Reduce steps
 pub struct MapReduce<M, R> {
+    /// The sequential batch mapper applied to each input item.
     pub mapper: Batch<M>,
+    /// The reducer applied to all mapped results.
     pub reducer: R,
 }
 
 impl<M, R> MapReduce<M, R> {
+    /// Create a `MapReduce` from a batch mapper and a reducer.
     pub fn new(mapper: Batch<M>, reducer: R) -> Self {
         Self { mapper, reducer }
     }
 
+    /// Execute the map phase then the reduce phase.
     pub async fn run(&self, inputs: Vec<SharedStore>) -> SharedStore
     where
         M: Node<SharedStore, SharedStore> + Send + Sync + Clone,

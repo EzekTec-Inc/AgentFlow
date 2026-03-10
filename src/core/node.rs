@@ -8,24 +8,101 @@ use std::time::Duration;
 
 use dyn_clone::DynClone;
 
-/// Shared store for communication between nodes
+/// Thread-safe, async-aware key-value store shared between all nodes in a flow.
+///
+/// Defined as `Arc<RwLock<HashMap<String, Value>>>` so it is cheap to clone
+/// (cloning the `Arc` shares the same underlying data) and safe to access
+/// concurrently from multiple async tasks.
+///
+/// # Reserved keys
+///
+/// - `"action"` — read by [`Flow`] after each node to determine the next
+///   transition. Nodes should write this key to control routing.
+///   It is automatically removed by `Flow` when execution ends.
+///
+/// # Deadlock prevention
+///
+/// **Never hold a write guard across an `.await` point.**
+///
+/// ```rust,no_run
+/// # use agentflow::SharedStore;
+/// # async fn example(store: SharedStore) {
+/// // ✅ correct — drop the guard before awaiting
+/// {
+///     let mut g = store.write().await;
+///     g.insert("key".into(), serde_json::json!("value"));
+/// } // guard dropped here
+/// some_async_fn().await;
+/// # async fn some_async_fn() {}
+/// # }
+/// ```
+///
+/// [`Flow`]: crate::core::flow::Flow
 pub type SharedStore = Arc<tokio::sync::RwLock<HashMap<String, Value>>>;
 
-/// Core Node trait - handles simple (LLM) tasks
+/// Core async node trait.
+///
+/// Every computation unit in AgentFlow implements this trait. It is generic
+/// over input `I` and output `O`, but in practice most nodes operate on
+/// [`SharedStore`] → [`SharedStore`].
+///
+/// Implement this directly for advanced use cases; for the common closure-based
+/// pattern use [`create_node`] instead.
+///
+/// # Object safety
+///
+/// The trait is object-safe and can be stored as `Box<dyn Node<I, O>>`.
+/// [`DynClone`] is a supertrait so boxed nodes can be cloned.
 pub trait Node<I, O>: Send + Sync + DynClone {
+    /// Execute the node with `input`, returning a future that resolves to `O`.
     fn call(&self, input: I) -> Pin<Box<dyn Future<Output = O> + Send + '_>>;
 }
 dyn_clone::clone_trait_object!(<I, O> Node<I, O>);
 
+/// Fallible variant of [`Node`] whose output is `Result<O, AgentFlowError>`.
+///
+/// Use this when a node can legitimately fail (e.g. an LLM call that may time
+/// out, or a parser that may receive malformed input). Combine with
+/// [`Agent::decide_result`] for automatic retry on [`AgentFlowError::Timeout`].
+///
+/// Create instances with [`create_result_node`].
+///
+/// [`Agent::decide_result`]: crate::patterns::agent::Agent::decide_result
 pub trait NodeResult<I, O>: Send + Sync + DynClone {
+    /// Execute the node, returning `Ok(O)` on success or an [`AgentFlowError`] on failure.
     fn call(&self, input: I)
         -> Pin<Box<dyn Future<Output = Result<O, AgentFlowError>> + Send + '_>>;
 }
 dyn_clone::clone_trait_object!(<I, O> NodeResult<I, O>);
 
+/// Type alias for a boxed infallible node operating on [`SharedStore`].
+///
+/// This is the most common node type used throughout AgentFlow patterns.
+/// Create one with [`create_node`].
 pub type SimpleNode = Box<dyn Node<SharedStore, SharedStore>>;
+
+/// Type alias for a boxed fallible node operating on [`SharedStore`].
+///
+/// Create one with [`create_result_node`].
 pub type ResultNode = Box<dyn NodeResult<SharedStore, SharedStore>>;
 
+/// Create an infallible [`SimpleNode`] from an async closure.
+///
+/// The closure receives a [`SharedStore`] and must return a future that resolves
+/// to a [`SharedStore`]. Routing is controlled by writing `"action"` into the
+/// store before returning.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use agentflow::prelude::*;
+///
+/// let node = create_node(|store: SharedStore| async move {
+///     store.write().await.insert("result".into(), serde_json::json!("done"));
+///     store.write().await.insert("action".into(), serde_json::json!("next"));
+///     store
+/// });
+/// ```
 pub fn create_node<F, Fut>(func: F) -> SimpleNode
 where
     F: Fn(SharedStore) -> Fut + Send + Sync + Clone + 'static,
@@ -50,6 +127,34 @@ where
     Box::new(FuncNode(func))
 }
 
+/// Create a fallible [`ResultNode`] from an async closure.
+///
+/// The closure receives a [`SharedStore`] and returns
+/// `Result<SharedStore, AgentFlowError>`. Use this when the node can fail in a
+/// meaningful way (network errors, missing keys, LLM timeouts, etc.).
+///
+/// Pair with [`Agent::decide_result`] for automatic retry on
+/// [`AgentFlowError::Timeout`], or with [`Flow::run_safe`] to halt the flow on
+/// any node failure.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use agentflow::prelude::*;
+/// use agentflow::core::error::AgentFlowError;
+///
+/// let node = create_result_node(|store: SharedStore| async move {
+///     let has_input = store.read().await.contains_key("prompt");
+///     if !has_input {
+///         return Err(AgentFlowError::NotFound("prompt key missing".into()));
+///     }
+///     store.write().await.insert("response".into(), serde_json::json!("ok"));
+///     Ok(store)
+/// });
+/// ```
+///
+/// [`Agent::decide_result`]: crate::patterns::agent::Agent::decide_result
+/// [`Flow::run_safe`]: crate::core::flow::Flow::run_safe
 pub fn create_result_node<F, Fut>(func: F) -> ResultNode
 where
     F: Fn(SharedStore) -> Fut + Send + Sync + Clone + 'static,
@@ -74,7 +179,19 @@ where
     Box::new(ResultFuncNode(func))
 }
 
-/// Helper to create a node with built-in retry/fallback logic and prep/exec/post pipeline.
+/// Create a [`SimpleNode`] with a built-in prep → exec (with retry) → post pipeline.
+///
+/// This is useful when you need to separate concerns:
+///
+/// 1. **`prep`** — extract and validate inputs from the store, returning a
+///    `serde_json::Value` payload.
+/// 2. **`exec`** — perform the expensive/fallible operation (e.g. LLM call)
+///    using the prep payload. Returns `Result<Value, AgentFlowError>`.
+///    Retried up to `max_retries` times on failure.
+/// 3. **`post`** — write the result back into the store and return it.
+///
+/// If all retries fail and no `fallback` is provided, a JSON error object is
+/// passed to `post`. If a `fallback` function is provided it is called instead.
 pub fn create_retry_node<PrepF, PrepFut, ExecF, ExecFut, PostF, PostFut>(
     prep: PrepF,
     exec: ExecF,
@@ -142,12 +259,8 @@ where
                 let exec_val = if let Some(val) = exec_res {
                     val
                 } else if let Some(fallback_fn) = fallback {
-                    // fallback returns a SharedStore, but we want a Value for post
-                    // We'll just insert an error string for now
                     let _fallback_store = fallback_fn(&input, &prep_res, &last_err.unwrap());
-                    let fallback_val = serde_json::json!({"error": "fallback triggered"});
-                    // Optionally, merge fallback_store into input here
-                    fallback_val
+                    serde_json::json!({"error": "fallback triggered"})
                 } else {
                     serde_json::json!({"error": format!("Node failed after {} retries: {:?}", max_retries, last_err)})
                 };
@@ -166,7 +279,17 @@ where
     })
 }
 
-/// Helper function to create a batch node that processes Vec<SharedStore>
+/// Create a node that accepts and returns a `Vec<SharedStore>` batch.
+///
+/// Useful when you need a single node to process an entire batch in one call,
+/// for example a reducer step in a [`MapReduce`] pipeline.
+///
+/// For processing each item in a batch independently, see [`Batch`] and
+/// [`ParallelBatch`].
+///
+/// [`MapReduce`]: crate::patterns::mapreduce::MapReduce
+/// [`Batch`]: crate::core::batch::Batch
+/// [`ParallelBatch`]: crate::core::batch::ParallelBatch
 pub fn create_batch_node<F, Fut>(func: F) -> Box<dyn Node<Vec<SharedStore>, SharedStore>>
 where
     F: Fn(Vec<SharedStore>) -> Fut + Send + Sync + Clone + 'static,
@@ -191,7 +314,7 @@ where
     Box::new(BatchFuncNode(func))
 }
 
-/// Blanket implementation for boxed nodes
+/// Blanket implementation so a `Box<dyn Node<I, O>>` is itself a `Node<I, O>`.
 impl<I, O> Node<I, O> for Box<dyn Node<I, O>>
 where
     I: Send + 'static,
@@ -202,7 +325,7 @@ where
     }
 }
 
-/// Blanket implementation for boxed result nodes
+/// Blanket implementation so a `Box<dyn NodeResult<I, O>>` is itself a `NodeResult<I, O>`.
 impl<I, O> NodeResult<I, O> for Box<dyn NodeResult<I, O>>
 where
     I: Send + 'static,
