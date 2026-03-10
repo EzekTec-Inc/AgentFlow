@@ -83,3 +83,61 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 * **Tasks:**
   1. Add `tracing` instrumentation to `Flow::run` and `Agent::decide`.
   2. Log node transitions, execution times, and retry attempts.
+
+---
+
+## Phase 4: Dynamic Orchestrator with Modular Agents
+
+### Step 4.1: TOML-Driven Agent Configuration
+* **Timestamp (UTC):** 2026-03-10T02:45:00Z
+* **Objective:** Allow agent settings (name, model, provider, preamble, output_key) to be declared
+  in a TOML file (`examples/agents.toml`) rather than hard-coded. If the file does not exist at
+  runtime, the example creates it with sensible defaults before proceeding.
+* **Files to create/modify:**
+  - `examples/dynamic_orchestrator.rs` ← new file (only example, no `src/` changes)
+  - `examples/agents.toml` ← created at runtime if absent; committed as a default config
+* **Exact reason:** Enables non-Rust users to reconfigure agents (model, preamble, output key)
+  without recompiling. Keeps all agent identity outside source code, consistent with the
+  project's "LLM-agnostic orchestration" philosophy.
+* **TOML schema (`examples/agents.toml`):**
+  ```toml
+  # Dynamic Orchestrator — agent registry configuration.
+  # Each [[agent]] entry is one modular agent the orchestrator may spin up.
+
+  [[agent]]
+  name        = "researcher"
+  provider    = "openai"          # "openai" | "gemini"
+  model       = "gpt-4.1-mini"
+  preamble    = "You are a concise research assistant."
+  output_key  = "research_result"
+
+  [[agent]]
+  name        = "coder"
+  provider    = "openai"
+  model       = "gpt-4.1-mini"
+  preamble    = "You are a senior Rust developer."
+  output_key  = "code_result"
+
+  [[agent]]
+  name        = "reviewer"
+  provider    = "openai"
+  model       = "gpt-4.1-mini"
+  preamble    = "You are a thorough code reviewer."
+  output_key  = "review_result"
+  ```
+* **Runtime behaviour:**
+  1. Example checks for `examples/agents.toml` using `std::path::Path::exists()`.
+  2. If missing, writes the default TOML content above to disk and prints a notice.
+  3. Parses the TOML into `Vec<AgentConfig>` using the `toml` crate. `toml` is NOT currently
+     in the lock file — it must be added to `[dev-dependencies]` in `Cargo.toml` (e.g.
+     `toml = "0.8"`). This is the only manifest change required.
+  4. Builds an `AgentRegistry` (`HashMap<String, AgentFactory>`) from the parsed configs.
+  5. Planner LLM receives the list of available agent names and selects a subset + order.
+  6. Dispatcher node pops each `AgentSpec` from the plan, looks up the registry, instantiates
+     and runs the agent sequentially so each agent can read the previous agent's output.
+  7. Aggregator LLM synthesises all `output_key` values into a final report.
+* **Previous behaviour:** N/A — new file.
+* **New behaviour:** `cargo run --example dynamic-orchestrator` works with zero manual config;
+  power users edit `examples/agents.toml` to swap models/providers without recompiling.
+* **Rollback:** Delete `examples/dynamic_orchestrator.rs` and `examples/agents.toml`;
+  remove `[[example]]` entry from `Cargo.toml` if added.
