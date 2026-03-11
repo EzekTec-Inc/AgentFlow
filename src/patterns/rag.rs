@@ -1,6 +1,8 @@
 use crate::core::node::{Node, SharedStore};
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Instant;
+use tracing::{debug, info, instrument};
 
 /// Retrieval-Augmented Generation pipeline.
 ///
@@ -66,13 +68,19 @@ impl<R, G> Rag<R, G> {
     }
 
     /// Execute the pipeline: retriever → generator.
+    #[instrument(name = "rag.ask", skip(self, query))]
     pub async fn ask(&self, query: SharedStore) -> SharedStore
     where
         R: Node<SharedStore, SharedStore>,
         G: Node<SharedStore, SharedStore>,
     {
+        let t = Instant::now();
+        debug!("Rag: starting retrieval phase");
         let store_after_retrieval = self.retriever.call(query).await;
-        self.generator.call(store_after_retrieval).await
+        debug!("Rag: retrieval done, starting generation");
+        let result = self.generator.call(store_after_retrieval).await;
+        info!(elapsed_ms = t.elapsed().as_millis(), "Rag: ask complete");
+        result
     }
 }
 

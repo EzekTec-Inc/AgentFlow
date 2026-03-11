@@ -155,3 +155,26 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 * **Previous behaviour:** Analysis existed only in conversation history.
 * **New behaviour:** Analysis lives in `examples/DYNAMIC-ORCHESTRATOR.md`, versioned in git.
 * **Rollback:** `rm examples/DYNAMIC-ORCHESTRATOR.md`
+
+---
+
+## Gap Resolution Phase 1: Fix Duplicate `[[example]]` Entries
+
+* **Timestamp (UTC):** 2026-03-10 23:14 UTC
+* **Summary:** Removed duplicate `[[example]]` entries for `plan-and-execute` and `routing` in `Cargo.toml`.
+* **Files modified:** `Cargo.toml`
+* **Exact reason:** Duplicate entries caused `cargo` to fail parsing the manifest, breaking `cargo run --example` for all examples.
+* **Previous behaviour:** `Cargo.toml` contained two `[[example]]` blocks each for `plan-and-execute` and `routing`, causing a cargo manifest error.
+* **New behaviour:** Each example has exactly one `[[example]]` entry; `cargo check` passes cleanly.
+* **Rollback:** Re-add the duplicate `[[example]]` blocks for `plan-and-execute` and `routing` after line 108 in `Cargo.toml`.
+
+---
+
+## Gap Resolution Phase 2: ARCHITECTURE.md + CONTRIBUTING.md
+
+* **Timestamp (UTC):** 2026-03-10 23:14 UTC
+* **Files created:**
+  - `ARCHITECTURE.md` — Full architecture reference: design philosophy, crate layout, all core primitives, all patterns, routing model, feature flags, concurrency rules, and a composability diagram.
+  - `CONTRIBUTING.md` — Contributor guide: prerequisites, code conventions, error handling rules, adding patterns/examples, PR process, and commit message format.
+* **`cargo check --all-features`** — passes cleanly.
+* **Rollback:** Delete `ARCHITECTURE.md` and `CONTRIBUTING.md`.

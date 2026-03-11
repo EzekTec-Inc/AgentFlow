@@ -2,6 +2,8 @@ use crate::core::flow::Flow;
 use crate::core::node::{Node, SharedStore, SimpleNode};
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Instant;
+use tracing::{debug, info, instrument};
 
 /// Linear sequence of named nodes with conditional branching.
 ///
@@ -94,27 +96,36 @@ impl Workflow {
     /// `params` (if any) are merged into `store` before the first step runs.
     /// This is the preferred method — it avoids an extra `Arc` round-trip
     /// compared to [`execute`](Self::execute).
+    #[instrument(name = "workflow.execute_shared", skip(self, store))]
     pub async fn execute_shared(
         &self,
         mut store: std::collections::HashMap<String, serde_json::Value>,
     ) -> SharedStore {
+        let t = Instant::now();
+        debug!("Workflow::execute_shared merging params");
         for (k, v) in &self.params {
             store.entry(k.clone()).or_insert(v.clone());
         }
         let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(store));
-        self.flow.run(shared_store).await
+        let result = self.flow.run(shared_store).await;
+        info!(elapsed_ms = t.elapsed().as_millis(), "Workflow::execute_shared complete");
+        result
     }
 
     /// Execute the workflow, returning a plain `HashMap`.
     ///
     /// This is a convenience wrapper around [`execute_shared`](Self::execute_shared)
     /// for callers that don't need to pass the store on to other nodes.
+    #[instrument(name = "workflow.execute", skip(self, store))]
     pub async fn execute(
         &self,
         store: std::collections::HashMap<String, serde_json::Value>,
     ) -> std::collections::HashMap<String, serde_json::Value> {
+        let t = Instant::now();
+        debug!("Workflow::execute starting");
         let result_store = self.execute_shared(store).await;
         let final_data = result_store.write().await.clone();
+        info!(elapsed_ms = t.elapsed().as_millis(), "Workflow::execute complete");
         final_data
     }
 
@@ -143,13 +154,17 @@ impl Node<SharedStore, SharedStore> for Workflow {
     fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
         let params = self.params.clone();
         Box::pin(async move {
+            let t = Instant::now();
+            debug!("Workflow::call (Node impl) merging params and running");
             {
                 let mut store = input.write().await;
                 for (k, v) in &params {
                     store.entry(k.clone()).or_insert(v.clone());
                 }
             }
-            self.flow.run(input).await
+            let result = self.flow.run(input).await;
+            info!(elapsed_ms = t.elapsed().as_millis(), "Workflow::call (Node impl) complete");
+            result
         })
     }
 }

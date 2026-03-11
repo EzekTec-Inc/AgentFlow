@@ -2,7 +2,7 @@ use crate::core::error::AgentFlowError;
 use crate::core::node::{Node, NodeResult, SharedStore};
 use std::future::Future;
 use std::pin::Pin;
-use tracing::{debug, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// Autonomous async decision-making unit with optional retry logic.
 ///
@@ -80,6 +80,7 @@ impl<N> Agent<N> {
     /// Retries when the output store contains an `"error"` key. Returns the
     /// last store produced (with or without `"error"`) after all attempts are
     /// exhausted.
+    #[instrument(name = "agent.decide_shared", skip(self, shared_store), fields(max_retries = self.max_retries))]
     pub async fn decide_shared(
         &self,
         shared_store: SharedStore,
@@ -96,6 +97,7 @@ impl<N> Agent<N> {
                 store.contains_key("error")
             };
             if !has_error {
+                info!(attempt, "Agent::decide_shared succeeded");
                 result_store = Some(res);
                 break;
             }
@@ -114,6 +116,7 @@ impl<N> Agent<N> {
     /// Useful for top-level callers that don't yet hold an `Arc<RwLock<…>>`.
     ///
     /// [`decide_shared`]: Agent::decide_shared
+    #[instrument(name = "agent.decide", skip(self, input), fields(max_retries = self.max_retries))]
     pub async fn decide(
         &self,
         input: std::collections::HashMap<String, serde_json::Value>,
@@ -137,6 +140,7 @@ impl<N> Agent<N> {
     ///
     /// Returns the last [`AgentFlowError`] if all retries are exhausted or a
     /// fatal error is encountered.
+    #[instrument(name = "agent.decide_result", skip(self, input, node), fields(max_retries = self.max_retries))]
     pub async fn decide_result<R>(
         &self,
         input: SharedStore,
@@ -150,7 +154,7 @@ impl<N> Agent<N> {
             debug!(attempt, max_retries = self.max_retries, "Agent::decide_result attempt");
             match node.call(input.clone()).await {
                 Ok(store) => {
-                    debug!(attempt, "Agent::decide_result succeeded");
+                    info!(attempt, "Agent::decide_result succeeded");
                     return Ok(store);
                 }
                 Err(AgentFlowError::Timeout(msg)) => {

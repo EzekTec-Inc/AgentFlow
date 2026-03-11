@@ -3,7 +3,7 @@ use crate::core::node::{Node, SharedStore, SimpleNode};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use tracing::{debug, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// A directed graph of [`SimpleNode`]s connected by labeled edges.
 ///
@@ -118,6 +118,7 @@ impl Flow {
     /// On [`max_steps`](Self::max_steps) exceeded, inserts
     /// `"error" = "Flow execution exceeded max_steps limit"` into the store
     /// and returns. Use [`run_safe`](Self::run_safe) for strict error handling.
+    #[instrument(name = "flow.run", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
     pub async fn run(&self, mut store: SharedStore) -> SharedStore {
         let mut current_node_name = if let Some(name) = &self.start_node {
             name.clone()
@@ -139,7 +140,8 @@ impl Flow {
             }
             steps += 1;
             debug!(step = steps, node = %current_node_name, "Flow::run executing node");
-
+            // Drop span before await so the future remains Send
+            drop(tracing::info_span!("flow.node", node = %current_node_name, step = steps).entered());
             store = node.call(store).await;
 
             let action = {
@@ -165,6 +167,7 @@ impl Flow {
         }
 
         store.write().await.remove("action");
+        info!(total_steps = steps, "Flow::run complete");
         store
     }
 
@@ -178,6 +181,7 @@ impl Flow {
     ///
     /// Returns [`AgentFlowError::ExecutionLimitExceeded`] when the step limit
     /// is exceeded.
+    #[instrument(name = "flow.run_safe", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
     pub async fn run_safe(&self, mut store: SharedStore) -> Result<SharedStore, AgentFlowError> {
         let mut current_node_name = if let Some(name) = &self.start_node {
             name.clone()
@@ -197,7 +201,8 @@ impl Flow {
             }
             steps += 1;
             debug!(step = steps, node = %current_node_name, "Flow::run_safe executing node");
-
+            // Drop span before await so the future remains Send
+            drop(tracing::info_span!("flow.node", node = %current_node_name, step = steps).entered());
             store = node.call(store).await;
 
             let action = {
@@ -223,6 +228,7 @@ impl Flow {
         }
 
         store.write().await.remove("action");
+        info!(total_steps = steps, "Flow::run_safe complete");
         Ok(store)
     }
 

@@ -1,5 +1,7 @@
 use crate::core::node::{Node, SharedStore};
 use crate::patterns::workflow::Workflow;
+use std::time::Instant;
+use tracing::{debug, info, instrument};
 
 /// BatchFlow: runs a workflow for each batch of parameter sets, like Python's BatchFlow.
 pub struct BatchFlow {
@@ -12,12 +14,17 @@ impl BatchFlow {
     }
 
     /// Run the workflow for each batch of parameter sets.
+    #[instrument(name = "batchflow.run", skip(self, shared, batch_params), fields(batch_count = batch_params.len()))]
     pub async fn run(
         &self,
         shared: SharedStore,
         batch_params: Vec<std::collections::HashMap<String, serde_json::Value>>,
     ) -> SharedStore {
-        for params in batch_params {
+        let t = Instant::now();
+        let total = batch_params.len();
+        debug!(batch_count = total, "BatchFlow: starting");
+        for (i, params) in batch_params.into_iter().enumerate() {
+            debug!(batch_index = i, "BatchFlow: running batch item");
             let mut wf = self.workflow.clone();
             wf.set_params(params);
             {
@@ -28,6 +35,7 @@ impl BatchFlow {
             }
             let _ = wf.call(shared.clone()).await;
         }
+        info!(batch_count = total, elapsed_ms = t.elapsed().as_millis(), "BatchFlow: complete");
         shared
     }
 }

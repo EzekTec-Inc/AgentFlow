@@ -2,6 +2,7 @@ use crate::core::node::{Node, SharedStore};
 use futures::future::join_all;
 use std::future::Future;
 use std::pin::Pin;
+use tracing::{debug, info, instrument};
 
 /// Controls how results from parallel agents are merged into the final store.
 ///
@@ -98,7 +99,9 @@ impl MultiAgent {
     }
 
     /// Run all agents concurrently and merge the results using the active strategy.
+    #[instrument(name = "multi_agent.run", skip(self, store), fields(agent_count = self.agents.len()))]
     pub async fn run(&self, store: SharedStore) -> SharedStore {
+        info!(agent_count = self.agents.len(), "MultiAgent::run starting");
         match &self.strategy {
             MergeStrategy::SharedStore => self.run_shared(store).await,
             MergeStrategy::Namespaced => self.run_namespaced(store).await,
@@ -107,16 +110,23 @@ impl MultiAgent {
     }
 
     /// SharedStore strategy — all agents share one `Arc`.
+    #[instrument(name = "multi_agent.run_shared", skip(self, store), fields(agent_count = self.agents.len()))]
     async fn run_shared(&self, store: SharedStore) -> SharedStore {
+        debug!(agent_count = self.agents.len(), "MultiAgent::run_shared spawning agents");
         let futures = self.agents.iter().map(|agent| agent.call(store.clone()));
         join_all(futures).await;
+        info!("MultiAgent::run_shared complete");
         store
     }
 
     /// Namespaced strategy — snapshot per agent, merge with prefix.
+    #[instrument(name = "multi_agent.run_namespaced", skip(self, store), fields(agent_count = self.agents.len()))]
     async fn run_namespaced(&self, store: SharedStore) -> SharedStore {
+        debug!(agent_count = self.agents.len(), "MultiAgent::run_namespaced starting");
         let mut agent_stores = Vec::new();
         for (idx, agent) in self.agents.iter().enumerate() {
+            // Drop span before await so the future remains Send
+            drop(tracing::info_span!("multi_agent.agent", agent_idx = idx).entered());
             let input = store.write().await.clone();
             let agent_store = std::sync::Arc::new(tokio::sync::RwLock::new(input));
             let result = agent.call(agent_store).await;
@@ -129,22 +139,28 @@ impl MultiAgent {
                 merged_store.insert(format!("agent_{}.{}", idx, key), value.clone());
             }
         }
+        info!("MultiAgent::run_namespaced complete");
         store
     }
 
     /// Custom strategy — snapshot per agent, user-supplied merge function.
+    #[instrument(name = "multi_agent.run_custom", skip(self, store, merge_fn), fields(agent_count = self.agents.len()))]
     async fn run_custom(
         &self,
         store: SharedStore,
         merge_fn: fn(Vec<SharedStore>) -> SharedStore,
     ) -> SharedStore {
+        debug!(agent_count = self.agents.len(), "MultiAgent::run_custom starting");
         let mut results = Vec::new();
-        for agent in &self.agents {
+        for (idx, agent) in self.agents.iter().enumerate() {
+            // Drop span before await so the future remains Send
+            drop(tracing::info_span!("multi_agent.agent", agent_idx = idx).entered());
             let input = store.write().await.clone();
             let agent_store = std::sync::Arc::new(tokio::sync::RwLock::new(input));
             let result = agent.call(agent_store).await;
             results.push(result);
         }
+        info!("MultiAgent::run_custom complete, calling merge_fn");
         merge_fn(results)
     }
 }

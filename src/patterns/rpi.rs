@@ -1,5 +1,7 @@
 use crate::core::flow::Flow;
 use crate::core::node::{SharedStore, SimpleNode};
+use std::time::Instant;
+use tracing::{debug, info, instrument};
 
 /// Orchestrates a **Research → Plan → Implement → Verify** agentic loop.
 ///
@@ -140,8 +142,13 @@ impl RpiWorkflow {
     /// The start node is always the first node registered — as long as you use
     /// the standard builder order (`with_research` first), `"research"` will
     /// always run first.
+    #[instrument(name = "rpi.run", skip(self, store))]
     pub async fn run(&self, store: SharedStore) -> SharedStore {
-        self.flow.run(store).await
+        let t = Instant::now();
+        debug!("RpiWorkflow: starting research phase");
+        let result = self.flow.run(store).await;
+        info!(elapsed_ms = t.elapsed().as_millis(), "RpiWorkflow: complete");
+        result
     }
 }
 

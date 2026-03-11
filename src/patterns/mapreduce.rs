@@ -2,6 +2,8 @@ use crate::core::batch::Batch;
 use crate::core::node::{Node, SharedStore};
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Instant;
+use tracing::{debug, info, instrument};
 
 /// Parallel map then sequential reduce over a collection of [`SharedStore`]s.
 ///
@@ -65,13 +67,19 @@ impl<M, R> MapReduce<M, R> {
     }
 
     /// Execute the map phase then the reduce phase.
+    #[instrument(name = "mapreduce.run", skip(self, inputs), fields(input_count = inputs.len()))]
     pub async fn run(&self, inputs: Vec<SharedStore>) -> SharedStore
     where
         M: Node<SharedStore, SharedStore> + Send + Sync + Clone,
         R: Node<Vec<SharedStore>, SharedStore> + Send + Sync,
     {
+        let t = Instant::now();
+        debug!(input_count = inputs.len(), "MapReduce: starting map phase");
         let mapped = self.mapper.call(inputs).await;
-        self.reducer.call(mapped).await
+        debug!(mapped_count = mapped.len(), "MapReduce: map phase done, starting reduce");
+        let result = self.reducer.call(mapped).await;
+        info!(elapsed_ms = t.elapsed().as_millis(), "MapReduce: complete");
+        result
     }
 }
 
