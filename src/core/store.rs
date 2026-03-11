@@ -58,7 +58,7 @@ impl Store {
 
     /// Get the value at `key` as a `String`, or `None` if absent or not a string.
     pub async fn get_string(&self, key: &str) -> Option<String> {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard
             .get(key)
             .and_then(|v| v.as_str())
@@ -67,25 +67,25 @@ impl Store {
 
     /// Get the value at `key` as an `i64`, or `None` if absent or not an integer.
     pub async fn get_i64(&self, key: &str) -> Option<i64> {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard.get(key).and_then(|v| v.as_i64())
     }
 
     /// Get the value at `key` as an `f64`, or `None` if absent or not a float.
     pub async fn get_f64(&self, key: &str) -> Option<f64> {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard.get(key).and_then(|v| v.as_f64())
     }
 
     /// Get the value at `key` as a `bool`, or `None` if absent or not a boolean.
     pub async fn get_bool(&self, key: &str) -> Option<bool> {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard.get(key).and_then(|v| v.as_bool())
     }
 
     /// Get a clone of the raw [`Value`] at `key`, or `None` if absent.
     pub async fn get(&self, key: &str) -> Option<Value> {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard.get(key).cloned()
     }
 
@@ -123,7 +123,7 @@ impl Store {
 
     /// Get the raw [`Value`] at `key`, or `Err` if absent.
     pub async fn require(&self, key: &str) -> Result<Value, String> {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard
             .get(key)
             .cloned()
@@ -160,7 +160,7 @@ impl Store {
 
     /// Returns `true` if the store contains `key`.
     pub async fn contains_key(&self, key: &str) -> bool {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard.contains_key(key)
     }
 
@@ -178,19 +178,19 @@ impl Store {
 
     /// Return all keys currently in the store.
     pub async fn keys(&self) -> Vec<String> {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard.keys().cloned().collect()
     }
 
     /// Return the number of entries in the store.
     pub async fn len(&self) -> usize {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard.len()
     }
 
     /// Return `true` if the store contains no entries.
     pub async fn is_empty(&self) -> bool {
-        let guard = self.inner.write().await;
+        let guard = self.inner.read().await;
         guard.is_empty()
     }
 }

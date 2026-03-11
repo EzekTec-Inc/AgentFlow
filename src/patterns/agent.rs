@@ -18,7 +18,7 @@ use tracing::{debug, info, instrument, warn};
 /// | Method | Node type | Error signal | Retry on |
 /// |---|---|---|---|
 /// | [`decide_shared`] | [`Node`] | `"error"` key in store | any `"error"` key |
-/// | [`decide`] | [`Node`] | `"error"` key | any `"error"` key |
+/// | [`decide`] | [`Node`] | `"error"` key | any `"error"` key (plain `HashMap` convenience wrapper) |
 /// | [`decide_result`] | [`NodeResult`] | `Err(AgentFlowError)` | `Timeout` only |
 ///
 /// # Example
@@ -93,7 +93,7 @@ impl<N> Agent<N> {
             debug!(attempt, max_retries = self.max_retries, "Agent::decide_shared attempt");
             let res = self.node.call(shared_store.clone()).await;
             let has_error = {
-                let store = res.write().await;
+                let store = res.read().await;
                 store.contains_key("error")
             };
             if !has_error {
@@ -126,7 +126,7 @@ impl<N> Agent<N> {
     {
         let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(input));
         let result_store = self.decide_shared(shared_store).await;
-        let final_data = result_store.write().await.clone();
+        let final_data = result_store.read().await.clone();
         final_data
     }
 
@@ -176,9 +176,9 @@ impl<N> Agent<N> {
 
 impl<N> Node<SharedStore, SharedStore> for Agent<N>
 where
-    N: Node<SharedStore, SharedStore> + Clone,
+    N: Node<SharedStore, SharedStore> + Clone + Send + Sync + 'static,
 {
     fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
-        self.node.call(input)
+        Box::pin(self.decide_shared(input))
     }
 }

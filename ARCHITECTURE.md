@@ -167,9 +167,14 @@ flow.add_transition("a", |state| {
 `Store` wraps a `SharedStore` with typed `get<T>`, `set`, and `require` helpers — eliminating manual `serde_json` casts in node bodies:
 
 ```rust
-let mut s = Store::new(store.clone());
+// Wrap an existing SharedStore
+let mut s = Store::from_shared(store.clone());
 s.set("count", 42u32);
-let n: u32 = s.require("count")?;
+let n: u32 = s.require("count").await?;
+
+// Or start fresh
+let mut s = Store::new();
+s.set("key", "value");
 ```
 
 ### Batch & ParallelBatch
@@ -206,11 +211,10 @@ An autonomous decision-making unit wrapping any `Node` with:
 - **Result-aware variant** — `decide_result` for `ResultNode`-backed agents.
 
 ```rust
-let agent = Agent::new(my_node)
-    .with_retry(3, Duration::from_millis(500));
+let agent = Agent::with_retry(my_node, 3, Duration::from_millis(500));
 
-let result = agent.decide(store).await;           // infallible
-let result = agent.decide_result(store).await;    // Result<SharedStore, AgentFlowError>
+let result = agent.decide_shared(store).await;         // infallible
+let result = agent.decide_result(store, &r_node).await; // Result<SharedStore, AgentFlowError>
 ```
 
 ### Workflow
@@ -221,7 +225,7 @@ A sequential pipeline of nodes. Each node executes in order; the store threads t
 let mut wf = Workflow::new();
 wf.add_step(node_a);
 wf.add_step(node_b);
-let result = wf.run(store).await;
+let result = wf.execute_shared(store).await;
 ```
 
 ### MultiAgent

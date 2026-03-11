@@ -7,9 +7,9 @@ at runtime. If the file does not exist it is created with defaults before procee
 How it works:
 1. Boot       — load (or create) `examples/agents.toml`, build an AgentRegistry.
 2. Planner    — LLM receives the goal + available agent names, returns a JSON array
-                of { name, prompt } objects selecting which agents to run and in what order.
+   of { name, prompt } objects selecting which agents to run and in what order.
 3. Dispatcher — pops one AgentSpec per cycle, looks it up in the registry, runs it,
-                appends the result; loops until the plan is empty.
+   appends the result; loops until the plan is empty.
 4. Aggregator — LLM synthesises every agent result into a final report.
 
 Requires: OPENAI_API_KEY

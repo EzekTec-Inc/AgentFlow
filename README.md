@@ -147,11 +147,12 @@ let node = create_result_node(|store: SharedStore| async move {
 Retry-aware async decision unit.
 
 ```rust
-let agent = Agent::new(my_node).with_retry(3, 500); // 3 retries, 500ms delay
+let agent = Agent::with_retry(my_node, 3, 500); // 3 retries, 500ms delay
 let result = agent.decide_shared(store).await;
 
 // Fallible variant — distinguishes Timeout vs NodeFailure
-let result = agent.decide_result(store, &my_result_node).await?;
+let agent2 = Agent::new(my_node2);
+let result = agent2.decide_result(store, &my_result_node).await?;
 ```
 
 ### Flow

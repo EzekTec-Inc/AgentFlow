@@ -113,17 +113,19 @@ impl Flow {
             .insert(action.to_string(), to.to_string());
     }
 
-    /// Execute the flow from the start node.
+    /// Shared execution logic for [`run`](Self::run) and [`run_safe`](Self::run_safe).
     ///
-    /// On [`max_steps`](Self::max_steps) exceeded, inserts
-    /// `"error" = "Flow execution exceeded max_steps limit"` into the store
-    /// and returns. Use [`run_safe`](Self::run_safe) for strict error handling.
-    #[instrument(name = "flow.run", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
-    pub async fn run(&self, mut store: SharedStore) -> SharedStore {
-        let mut current_node_name = if let Some(name) = &self.start_node {
-            name.clone()
-        } else {
-            return store;
+    /// `on_limit_exceeded` controls behavior when `max_steps` is reached:
+    /// - `Ok(store)` path  → write `"error"` key and return (used by `run`)
+    /// - `Err(…)` path     → return `Err(AgentFlowError::ExecutionLimitExceeded)` (used by `run_safe`)
+    async fn run_internal(
+        &self,
+        mut store: SharedStore,
+        safe: bool,
+    ) -> Result<SharedStore, AgentFlowError> {
+        let mut current_node_name = match self.start_node.as_deref() {
+            Some(name) => name.to_string(),
+            None => return Ok(store),
         };
 
         let mut steps = 0;
@@ -131,29 +133,37 @@ impl Flow {
 
         while let Some(node) = self.nodes.get(&current_node_name) {
             if steps >= limit {
-                warn!(steps, limit, "Flow::run exceeded max_steps limit");
-                store.write().await.insert(
-                    "error".to_string(),
-                    serde_json::Value::String("Flow execution exceeded max_steps limit".to_string()),
-                );
-                break;
+                warn!(steps, limit, "Flow exceeded max_steps limit");
+                if safe {
+                    return Err(AgentFlowError::ExecutionLimitExceeded(
+                        "Flow execution exceeded max_steps limit".to_string(),
+                    ));
+                } else {
+                    store.write().await.insert(
+                        "error".to_string(),
+                        serde_json::Value::String(
+                            "Flow execution exceeded max_steps limit".to_string(),
+                        ),
+                    );
+                    break;
+                }
             }
             steps += 1;
-            debug!(step = steps, node = %current_node_name, "Flow::run executing node");
+            debug!(step = steps, node = %current_node_name, "Flow executing node");
             // Drop span before await so the future remains Send
             drop(tracing::info_span!("flow.node", node = %current_node_name, step = steps).entered());
             store = node.call(store).await;
 
-            let action = {
-                let guard = store.write().await;
-                guard
-                    .get("action")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "default".to_string())
-            };
+            // Use a read lock — we are only reading the "action" key
+            let action = store
+                .read()
+                .await
+                .get("action")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "default".to_string());
 
-            debug!(step = steps, node = %current_node_name, action = %action, "Flow::run transition");
+            debug!(step = steps, node = %current_node_name, action = %action, "Flow transition");
 
             if let Some(next_node) = self
                 .edges
@@ -167,8 +177,19 @@ impl Flow {
         }
 
         store.write().await.remove("action");
-        info!(total_steps = steps, "Flow::run complete");
-        store
+        info!(total_steps = steps, "Flow run complete");
+        Ok(store)
+    }
+
+    /// Execute the flow from the start node.
+    ///
+    /// On [`max_steps`](Self::max_steps) exceeded, inserts
+    /// `"error" = "Flow execution exceeded max_steps limit"` into the store
+    /// and returns. Use [`run_safe`](Self::run_safe) for strict error handling.
+    #[instrument(name = "flow.run", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
+    pub async fn run(&self, store: SharedStore) -> SharedStore {
+        // SAFETY: `safe = false` means the internal function always returns Ok(store).
+        self.run_internal(store, false).await.unwrap()
     }
 
     /// Execute the flow, returning `Err(AgentFlowError::ExecutionLimitExceeded)`
@@ -182,54 +203,8 @@ impl Flow {
     /// Returns [`AgentFlowError::ExecutionLimitExceeded`] when the step limit
     /// is exceeded.
     #[instrument(name = "flow.run_safe", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
-    pub async fn run_safe(&self, mut store: SharedStore) -> Result<SharedStore, AgentFlowError> {
-        let mut current_node_name = if let Some(name) = &self.start_node {
-            name.clone()
-        } else {
-            return Ok(store);
-        };
-
-        let mut steps = 0;
-        let limit = self.max_steps.unwrap_or(usize::MAX);
-
-        while let Some(node) = self.nodes.get(&current_node_name) {
-            if steps >= limit {
-                warn!(steps, limit, "Flow::run_safe exceeded max_steps limit");
-                return Err(AgentFlowError::ExecutionLimitExceeded(
-                    "Flow execution exceeded max_steps limit".to_string(),
-                ));
-            }
-            steps += 1;
-            debug!(step = steps, node = %current_node_name, "Flow::run_safe executing node");
-            // Drop span before await so the future remains Send
-            drop(tracing::info_span!("flow.node", node = %current_node_name, step = steps).entered());
-            store = node.call(store).await;
-
-            let action = {
-                let guard = store.write().await;
-                guard
-                    .get("action")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "default".to_string())
-            };
-
-            debug!(step = steps, node = %current_node_name, action = %action, "Flow::run_safe transition");
-
-            if let Some(next_node) = self
-                .edges
-                .get(&current_node_name)
-                .and_then(|edges| edges.get(&action))
-            {
-                current_node_name = next_node.clone();
-            } else {
-                break;
-            }
-        }
-
-        store.write().await.remove("action");
-        info!(total_steps = steps, "Flow::run_safe complete");
-        Ok(store)
+    pub async fn run_safe(&self, store: SharedStore) -> Result<SharedStore, AgentFlowError> {
+        self.run_internal(store, true).await
     }
 
     /// Look up a node by name. Returns `None` if not registered.

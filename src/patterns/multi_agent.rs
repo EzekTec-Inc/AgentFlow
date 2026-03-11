@@ -123,17 +123,18 @@ impl MultiAgent {
     #[instrument(name = "multi_agent.run_namespaced", skip(self, store), fields(agent_count = self.agents.len()))]
     async fn run_namespaced(&self, store: SharedStore) -> SharedStore {
         debug!(agent_count = self.agents.len(), "MultiAgent::run_namespaced starting");
-        let mut agent_stores = Vec::new();
-        for (idx, agent) in self.agents.iter().enumerate() {
-            // Drop span before await so the future remains Send
-            drop(tracing::info_span!("multi_agent.agent", agent_idx = idx).entered());
-            let input = store.write().await.clone();
-            let agent_store = std::sync::Arc::new(tokio::sync::RwLock::new(input));
-            let result = agent.call(agent_store).await;
-            agent_stores.push((idx, result));
-        }
+
+        // Snapshot the store once, then fan out to all agents concurrently
+        let snapshot = store.read().await.clone();
+        let futures = self.agents.iter().enumerate().map(|(idx, agent)| {
+            let agent_store = std::sync::Arc::new(tokio::sync::RwLock::new(snapshot.clone()));
+            async move { (idx, agent.call(agent_store).await) }
+        });
+        let agent_stores = join_all(futures).await;
+
+        // Merge results back with "agent_N." prefix
         for (idx, agent_store) in agent_stores {
-            let agent_data = agent_store.write().await;
+            let agent_data = agent_store.read().await;
             let mut merged_store = store.write().await;
             for (key, value) in agent_data.iter() {
                 merged_store.insert(format!("agent_{}.{}", idx, key), value.clone());
@@ -151,15 +152,15 @@ impl MultiAgent {
         merge_fn: fn(Vec<SharedStore>) -> SharedStore,
     ) -> SharedStore {
         debug!(agent_count = self.agents.len(), "MultiAgent::run_custom starting");
-        let mut results = Vec::new();
-        for (idx, agent) in self.agents.iter().enumerate() {
-            // Drop span before await so the future remains Send
-            drop(tracing::info_span!("multi_agent.agent", agent_idx = idx).entered());
-            let input = store.write().await.clone();
-            let agent_store = std::sync::Arc::new(tokio::sync::RwLock::new(input));
-            let result = agent.call(agent_store).await;
-            results.push(result);
-        }
+
+        // Snapshot the store once, then fan out to all agents concurrently
+        let snapshot = store.read().await.clone();
+        let futures = self.agents.iter().map(|agent| {
+            let agent_store = std::sync::Arc::new(tokio::sync::RwLock::new(snapshot.clone()));
+            agent.call(agent_store)
+        });
+        let results = join_all(futures).await;
+
         info!("MultiAgent::run_custom complete, calling merge_fn");
         merge_fn(results)
     }
