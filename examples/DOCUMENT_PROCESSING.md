@@ -19,3 +19,22 @@ Domain: contract / business document processing.
 Requires: OPENAI_API_KEY
 Optional: pandoc, imagemagick (falls back to echo mock if not installed)
 Run with: cargo run --example document-processing
+
+## Implementation Architecture
+
+```mermaid
+graph TD
+    Start[(Document File)] --> Classify[Classify Node<br>Determine type]
+    Classify --> Extract[Extract Node<br>LLM Entities]
+    Extract --> Analyze[Analyze Node<br>LLM Context & Quality]
+    Analyze -->|Quality Poor| Retry{Retry limit?}
+    Retry -->|No| Extract
+    Analyze -->|Quality Good| Convert[Convert Tool Node<br>Pandoc/Imagemagick]
+    Convert --> End[(Final Store)]
+    
+    classDef node fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef tool fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
+    class Classify,Extract,Analyze node;
+    class Convert tool;
+```
+

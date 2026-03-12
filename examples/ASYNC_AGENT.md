@@ -7,6 +7,20 @@
 **Purpose:**
 Showcases running multiple agents concurrently (async/parallel) using PocketFlow and rig.
 
+
+## Implementation Architecture
+
+```mermaid
+graph TD
+    Input1[(Store 1)] --> A1[Agent 1<br>Poetry]
+    Input2[(Store 2)] --> A2[Agent 2<br>Summarize]
+    A1 -->|tokio::join!| Output1[(Store 1<br>response)]
+    A2 -->|tokio::join!| Output2[(Store 2<br>response)]
+    
+    classDef agent fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    class A1,A2 agent;
+```
+
 **How it works:**
 - Defines two LLM nodes with different prompts.
 - Wraps each in an `Agent`.

@@ -7,6 +7,21 @@
 **Purpose:**
 Demonstrates how to create a single LLM-powered agent using PocketFlow and the rig crate, including retry logic and both ergonomic and low-level usage.
 
+
+## Implementation Architecture
+
+```mermaid
+graph TD
+    Input[(SharedStore<br>prompt)] --> AgentNode[Agent Node<br>LLM via Rig]
+    AgentNode -->|Success| Output[(SharedStore<br>response)]
+    AgentNode -.->|Error| Retry{Retry limit?}
+    Retry -.->|No| AgentNode
+    Retry -.->|Yes| Fail[Error]
+    
+    classDef agent fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    class AgentNode,Retry agent;
+```
+
 **How it works:**
 - Defines a node that takes a prompt from the store and calls an LLM (via rig) to generate a response.
 - Wraps the node in an `Agent` with retry logic.

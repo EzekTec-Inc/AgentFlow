@@ -7,6 +7,20 @@
 **Purpose:**
 Implements a multi-agent, interactive TUI pipeline for research, summarization, and critique, with structured output and user-driven control.
 
+
+## Implementation Architecture
+
+```mermaid
+graph TD
+    Input[(Prompt)] --> LLM[LLM Node]
+    LLM --> JSON[StructuredOutput Node<br>Extract & Validate JSON]
+    JSON -->|Valid| Output[(Typed Rust Struct)]
+    JSON -->|Invalid| Retry[Retry / Error]
+    
+    classDef struct fill:#e8eaf6,stroke:#283593,stroke-width:2px;
+    class JSON struct;
+```
+
 **How it works:**
 - The user enters a topic via a TUI menu.
 - Three LLM agents run in sequence: research, summarize, critique.

@@ -287,3 +287,21 @@ This isn't a node, but a crucial mechanism.
 **Purpose**: To provide a clean and definitive end to the execution loop.
 
 
+
+
+## Implementation Architecture
+
+```mermaid
+graph TD
+    Start[(Goal)] --> Planner[Planner Node<br>LLM Array Output]
+    Planner -->|action: dispatch| Dispatcher[Dispatcher Node<br>Loop over tasks]
+    Dispatcher -->|action: dispatch| Dispatcher
+    Dispatcher -->|Execute Agent| SubAgent[Factory Agent<br>Researcher/Coder/Reviewer]
+    SubAgent --> Dispatcher
+    Dispatcher -->|action: aggregate<br>when empty| Aggregator[Aggregator Node<br>Final Report]
+    Aggregator --> End[(Done)]
+    
+    classDef flow fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
+    class Planner,Dispatcher,Aggregator flow;
+```
+

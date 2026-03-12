@@ -241,3 +241,11 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** Markdown files were lowercase.
 - **New behavior:** Markdown filenames are all uppercase with `.md` extension.
 - **Rollback instructions:** Revert this commit using `git revert HEAD` to restore the lowercase filenames.
+
+## [2026-03-12T23:55:00Z] Add specific Mermaid diagrams to all example documentation
+- **Summary of change:** Embedded 20 custom Mermaid diagrams into the newly created `examples/*.md` files, demonstrating the specific flow, nodes, tool usage, and AgentFlow architecture used in each implementation.
+- **Files modified:** `examples/*.md` (all 20 developer documentation files)
+- **Exact reason:** To provide visual representations of how each example is implemented and where the AgentFlow framework steps in, making it easier for developers to understand the architecture at a glance.
+- **Previous behavior:** Markdown files contained only text descriptions of the examples.
+- **New behavior:** Every example documentation file now contains a `## Implementation Architecture` section with a targeted Mermaid diagram illustrating the flow and AgentFlow components used.
+- **Rollback instructions:** Revert this commit using `git revert HEAD` to remove the Mermaid diagrams from the documentation files.

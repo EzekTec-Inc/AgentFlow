@@ -7,6 +7,22 @@
 **Purpose:**
 Demonstrates running multiple agents in parallel, each responsible for a different part of a software project (e.g., generating TypeScript, HTML, and TailwindCSS for a Space Invader game).
 
+
+## Implementation Architecture
+
+```mermaid
+graph TD
+    Input[(SharedStore)] --> Split{MultiAgent Router}
+    Split --> A1[Agent 1]
+    Split --> A2[Agent 2]
+    A1 --> Merge[Merge Strategy<br>Namespaced/Shared/Custom]
+    A2 --> Merge
+    Merge --> Output[(Combined Store)]
+    
+    classDef multi fill:#fce4ec,stroke:#ad1457,stroke-width:2px;
+    class Split,Merge multi;
+```
+
 **How it works:**
 - Each agent is an LLM node with a specialized prompt.
 - All agents write their results to a shared store.

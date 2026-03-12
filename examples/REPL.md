@@ -11,3 +11,17 @@ Type `exit` or `quit` to stop.
 
 Requires: OPENAI_API_KEY
 Run with: cargo run --example repl
+
+## Implementation Architecture
+
+```mermaid
+graph TD
+    User([User Input]) --> Wait[Wait for Input]
+    Wait --> Agent[Agent Node<br>LLM Response]
+    Agent --> Output([Stdout])
+    Output --> Wait
+    
+    classDef repl fill:#e0e0e0,stroke:#424242,stroke-width:2px;
+    class Wait,Agent repl;
+```
+

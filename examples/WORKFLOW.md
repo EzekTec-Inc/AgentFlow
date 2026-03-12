@@ -7,6 +7,20 @@
 **Purpose:**
 Demonstrates a real-world, multi-step workflow for a Land Registry Agency, with Human-in-the-Loop (HITL) at each step.
 
+
+## Implementation Architecture
+
+```mermaid
+graph LR
+    Input[(Initial Store)] --> Step1[Workflow Node 1]
+    Step1 -->|action| Step2[Workflow Node 2]
+    Step2 -->|action| Step3[Workflow Node 3]
+    Step3 --> Output[(Final Store)]
+    
+    classDef wf fill:#e0f7fa,stroke:#006064,stroke-width:2px;
+    class Step1,Step2,Step3 wf;
+```
+
 **How it works:**
 - Each step is an LLM agent: title search, title issuance, legal review.
 - After each step, the result is shown to the user, who can approve, request revision, restart, or cancel.

@@ -14,3 +14,17 @@ is a plain Rust struct — no string key lookups, full type safety.
 
 Requires: OPENAI_API_KEY
 Run with: cargo run --example typed-flow
+
+## Implementation Architecture
+
+```mermaid
+graph TD
+    Struct[(Custom Typed State)] --> Node[create_typed_node<br>Mutates State]
+    Node --> Transition[flow.add_transition<br>Closure]
+    Transition -->|Enum Variant| NextNode[Next Typed Node]
+    Transition -->|None| End[(Final Typed State)]
+    
+    classDef typed fill:#e1bee7,stroke:#6a1b9a,stroke-width:2px;
+    class Node,Transition typed;
+```
+

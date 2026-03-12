@@ -7,6 +7,21 @@
 **Purpose:**
 Implements a real-world Retrieval-Augmented Generation (RAG) pipeline using rig for both retrieval and generation.
 
+
+## Implementation Architecture
+
+```mermaid
+graph LR
+    Query[(Query)] --> Retriever[Retriever Node<br>Vector DB / Search]
+    Retriever --> Context[Retrieved Context]
+    Context --> Generator[Generator Node<br>LLM Prompt]
+    Query --> Generator
+    Generator --> Response[(Answer)]
+    
+    classDef rag fill:#e0f2f1,stroke:#00695c,stroke-width:2px;
+    class Retriever,Generator rag;
+```
+
 **How it works:**
 - The retriever agent uses an LLM to synthesize or retrieve context for a user query.
 - The generator agent uses an LLM to generate an answer based on the context.

@@ -17,3 +17,17 @@ How it works:
 
 Requires: OPENAI_API_KEY
 Run with: cargo run --example orchestrator-with-tools
+
+## Implementation Architecture
+
+```mermaid
+graph TD
+    Goal[(Goal)] --> Planner[Orchestrator Node]
+    Planner -->|Tool Call Decision| Tool[Tool Node<br>e.g. Shell/Fetch]
+    Tool -->|Tool Output| Planner
+    Planner -->|Done| Final[(Final Output)]
+    
+    classDef tool fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
+    class Tool tool;
+```
+
