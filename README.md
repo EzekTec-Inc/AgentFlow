@@ -10,6 +10,25 @@ Bring your own LLM provider (`rig`, `openai`, `anthropic`, etc.) — AgentFlow h
 
 ---
 
+## High-Level Architecture
+
+AgentFlow is composed of five distinct layers designed to work together seamlessly:
+
+```mermaid
+graph TD
+    Client[External Client<br>Cursor / Claude Desktop] -->|stdio| MCP(mcp)
+    MCP --> Patterns
+    Skills(skills)<br>YAML Definitions -->|generates| Patterns
+    Patterns(patterns)<br>Agent, Workflow, RAG --> Core
+    Core(core)<br>Flow, Nodes, SharedStore --> Utils
+    Utils(utils)<br>System Tools, Shell --> OS[Operating System]
+    
+    classDef layer fill:#f9f,stroke:#333,stroke-width:2px;
+    class MCP,Skills,Patterns,Core,Utils layer;
+```
+
+---
+
 ## Features
 
 | Feature | Description |
@@ -94,34 +113,35 @@ async fn main() {
 
 ---
 
-## Core Concepts
+## Module Deep-Dives
 
-### SharedStore
+### 1. `core` (Execution Engine & State)
 
+The `core` module contains the fundamental building blocks of AgentFlow: thread-safe state storage and the graph-based execution engine.
+
+```mermaid
+graph TD
+    Flow((Flow Engine))
+    NodeA[Node A]
+    NodeB[Node B]
+    Store[(SharedStore)]
+    
+    Flow -->|executes| NodeA
+    NodeA <-->|reads/writes| Store
+    NodeA -->|action: 'next'| Flow
+    Flow -->|routes| NodeB
+    NodeB <-->|reads/writes| Store
+```
+
+**SharedStore**
 ```rust
 pub type SharedStore = Arc<RwLock<HashMap<String, serde_json::Value>>>;
 ```
-
 - All nodes communicate through a single `SharedStore`.
 - The `"action"` key is reserved by `Flow` for routing decisions. **It is automatically consumed (removed) upon each transition** to prevent state leaks.
 - **Always drop the write guard before `.await`** to avoid deadlocks.
 
-```rust
-// ❌ deadlock risk
-let mut g = store.write().await;
-g.insert("key".into(), val);
-some_async_fn().await; // lock still held!
-
-// ✅ correct
-{
-    let mut g = store.write().await;
-    g.insert("key".into(), val);
-} // guard dropped here
-some_async_fn().await;
-```
-
-### Nodes
-
+**Nodes**
 ```rust
 // Infallible node
 let node = create_node(|store: SharedStore| async move {
@@ -138,51 +158,8 @@ let node = create_result_node(|store: SharedStore| async move {
 });
 ```
 
----
-
-## Patterns
-
-### Agent
-
-Retry-aware async decision unit.
-
-```mermaid
-flowchart LR
-    Start([Input Store]) --> AgentNode[Agent Node]
-    AgentNode -->|Success| End([Output Store])
-    AgentNode -->|Transient Error| Retry{Retry limit reached?}
-    Retry -->|No| Wait[Delay]
-    Wait --> AgentNode
-    Retry -->|Yes| Error([Fatal Error])
-```
-
-```rust
-let agent = Agent::with_retry(my_node, 3, 500); // 3 retries, 500ms delay
-let result = agent.decide_shared(store).await;
-
-// Fallible variant — distinguishes Timeout vs NodeFailure
-let agent2 = Agent::new(my_node2);
-let result = agent2.decide_result(store, &my_result_node).await?;
-```
-
-### Flow
-
+**Flow**
 Directed graph with labeled-edge routing and infinite-loop prevention.
-
-```mermaid
-graph TD
-    Flow((Flow Engine))
-    NodeA[Node A]
-    NodeB[Node B]
-    Store[(SharedStore)]
-    
-    Flow -->|executes| NodeA
-    NodeA <-->|reads/writes| Store
-    NodeA -->|action: 'next'| Flow
-    Flow -->|routes| NodeB
-    NodeB <-->|reads/writes| Store
-```
-
 ```rust
 let mut flow = Flow::new().with_max_steps(50);
 
@@ -202,116 +179,8 @@ let result = flow.run(store).await;
 let result = flow.run_safe(store).await?;
 ```
 
-### TypedFlow
+**TypedFlow**
 Like `Flow`, but uses compile-time typed state and function closures for routing. Fully instrumented with `tracing` to visualize state machine execution.
-
-```rust
-let mut flow = TypedFlow::<MyState>::new().with_max_steps(10);
-
-### Workflow
-
-Linear steps with conditional branching.
-
-```mermaid
-flowchart LR
-    Step1[Node A] --> Step2[Node B]
-    Step2 --> Step3[Node C]
-```
-
-```rust
-let mut wf = Workflow::new();
-wf.add_step("research", research_node);
-wf.add_step("write",    write_node);
-wf.add_step("review",   review_node);
-wf.connect("research", "write");
-wf.connect("write",    "review");
-
-let result = wf.execute_shared(store).await;
-```
-
-### MultiAgent
-
-Parallel agent execution with configurable merge strategies.
-
-```mermaid
-flowchart TD
-    Input([Input Store]) --> Split{Parallel Dispatch}
-    Split --> Agent1[Agent 1]
-    Split --> Agent2[Agent 2]
-    Split --> Agent3[Agent 3]
-    Agent1 --> Merge[Merge Strategy]
-    Agent2 --> Merge
-    Agent3 --> Merge
-    Merge --> Output([Output Store])
-```
-
-```rust
-// Strategy 1: SharedStore (default) — all agents share one store
-let mut multi = MultiAgent::new();
-multi.add_agent(researcher_node);
-multi.add_agent(coder_node);
-
-// Strategy 2: Namespaced — outputs keyed as "agent_0.*", "agent_1.*"
-let mut multi = MultiAgent::with_strategy(MergeStrategy::Namespaced);
-
-// Strategy 3: Custom merge function
-let mut multi = MultiAgent::with_strategy(MergeStrategy::Custom(my_merge_fn));
-
-let result = multi.run(store).await;
-```
-
-### RAG
-
-```mermaid
-flowchart LR
-    Query([Query]) --> Retriever[Retriever Node]
-    Retriever -->|Context| Generator[Generator Node]
-    Generator --> Response([Response])
-```
-
-```rust
-let rag = Rag::new(retriever_node, generator_node);
-// retriever writes "context" → generator reads "context", writes "response"
-let result = rag.call(store).await;
-```
-
-### MapReduce
-
-```mermaid
-flowchart TD
-    Input([Input Array]) --> Map[Mapper Node]
-    Map -->|Item 1| M1[Mapped 1]
-    Map -->|Item 2| M2[Mapped 2]
-    Map -->|Item N| MN[Mapped N]
-    M1 --> Reduce[Reducer Node]
-    M2 --> Reduce
-    MN --> Reduce
-    Reduce --> Output([Aggregated Store])
-```
-
-```rust
-let mr = MapReduce::new(mapper_node, reducer_node);
-let result = mr.run(vec![store1, store2, store3]).await;
-```
-
-### Store — typed access helper
-
-```rust
-use agentflow::core::store::Store;
-
-let store = Store::new();
-store.set_string("name", "Alice").await;
-store.set_i64("age", 30).await;
-store.set_bool("active", true).await;
-
-let name: Option<String> = store.get_string("name").await;
-let age:  Option<i64>    = store.get_i64("age").await;
-let name: String         = store.require_string("name").await?; // Err if missing
-
-let shared: SharedStore  = store.into_shared();
-```
-
-### TypedFlow — generic state machine
 
 ```rust
 use agentflow::core::{TypedFlow, TypedStore, create_typed_node};
@@ -332,27 +201,123 @@ flow.add_transition("inc", |state| {
 });
 
 let final_state = flow.run(TypedStore::new(MyState { count: 0 })).await;
-// final_state.inner.read().await.count == 5
 ```
 
-### Error Handling
+---
 
-```rust
-use agentflow::core::error::AgentFlowError;
+### 2. `patterns` (High-Level Abstractions)
 
-let node = create_result_node(|store: SharedStore| async move {
-    store.read().await
-        .get("input").cloned()
-        .ok_or_else(|| AgentFlowError::NotFound("input key missing".into()))?;
-    Ok(store)
-});
+Pre-built architectures that compose `core` primitives into standard AI workflows.
 
-match flow.run_safe(store).await {
-    Ok(store) => { /* success */ }
-    Err(AgentFlowError::ExecutionLimitExceeded(msg)) => eprintln!("Loop: {}", msg),
-    Err(e) => eprintln!("Error: {}", e),
-}
+**Agent**
+Retry-aware async decision unit.
+```mermaid
+flowchart LR
+    Start([Input Store]) --> AgentNode[Agent Node]
+    AgentNode -->|Success| End([Output Store])
+    AgentNode -->|Transient Error| Retry{Retry limit reached?}
+    Retry -->|No| Wait[Delay]
+    Wait --> AgentNode
+    Retry -->|Yes| Error([Fatal Error])
 ```
+
+**Workflow**
+Linear steps with conditional branching.
+```mermaid
+flowchart LR
+    Step1[Node A] --> Step2[Node B]
+    Step2 --> Step3[Node C]
+```
+
+**MultiAgent**
+Parallel agent execution with configurable merge strategies.
+```mermaid
+flowchart TD
+    Input([Input Store]) --> Split{Parallel Dispatch}
+    Split --> Agent1[Agent 1]
+    Split --> Agent2[Agent 2]
+    Split --> Agent3[Agent 3]
+    Agent1 --> Merge[Merge Strategy]
+    Agent2 --> Merge
+    Agent3 --> Merge
+    Merge --> Output([Output Store])
+```
+
+**RAG (Retrieval-Augmented Generation)**
+```mermaid
+flowchart LR
+    Query([Query]) --> Retriever[Retriever Node]
+    Retriever -->|Context| Generator[Generator Node]
+    Generator --> Response([Response])
+```
+
+**MapReduce**
+Batch map + reduce over document collections.
+```mermaid
+flowchart TD
+    Input([Input Array]) --> Map[Mapper Node]
+    Map -->|Item 1| M1[Mapped 1]
+    Map -->|Item 2| M2[Mapped 2]
+    Map -->|Item N| MN[Mapped N]
+    M1 --> Reduce[Reducer Node]
+    M2 --> Reduce
+    MN --> Reduce
+    Reduce --> Output([Aggregated Store])
+```
+
+---
+
+### 3. `skills` (Declarative Logic)
+
+The `skills` module allows defining agent behaviors, prompts, and tool requirements in YAML, cleanly separating logic from Rust code.
+
+```mermaid
+flowchart LR
+    YAML[Skill.yaml] -->|parsed by| Parser[Skill Parser]
+    Parser --> Prompts[System Prompts]
+    Parser --> Tools[Tool Definitions]
+    Prompts --> Agent[Agent Node]
+    Tools --> Agent
+```
+
+*(Requires the `skills` feature flag)*
+
+---
+
+### 4. `utils` (System Interfacing)
+
+The `utils` module provides safe, standardized ways for agents to interact with the host system, such as executing shell commands.
+
+```mermaid
+sequenceDiagram
+    participant Agent as Agent Node
+    participant Tool as utils::tool
+    participant OS as Host OS
+    participant Store as SharedStore
+
+    Agent->>Tool: Request shell command
+    Tool->>OS: Execute command safely
+    OS-->>Tool: stdout / stderr / exit code
+    Tool->>Store: Write output to store
+    Store-->>Agent: Result available for next step
+```
+
+*(e.g., `create_tool_node` for shell execution)*
+
+---
+
+### 5. `mcp` (Model Context Protocol)
+
+The `mcp` module exposes your AgentFlow pipelines as an MCP server over `stdio`. This allows IDEs like Cursor or the Claude Desktop app to interact directly with your custom tools and agents.
+
+```mermaid
+flowchart LR
+    Client[Cursor / Claude Desktop] <-->|stdio JSON-RPC| Server[AgentFlow MCP Server]
+    Server <-->|translate request| Flow[AgentFlow Workflow]
+    Flow <--> Store[SharedStore]
+```
+
+*(Requires the `mcp` feature flag)*
 
 ---
 

@@ -206,3 +206,10 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** Documentation described `Flow` as just "reading" and removing without explicitly noting it prevents leaks by consuming the key under a write lock, and `TypedFlow` documentation examples lacked the `.with_max_steps()` call.
 - **New behavior:** Documentation now accurately describes `Flow` extracting and consuming the `"action"` key under a write lock, and explicitly lists `with_max_steps` for `TypedFlow` examples and mentions its telemetry.
 - **Rollback instructions:** Revert edits to `README.md` and `ARCHITECTURE.md` by undoing the Git diff for these changes.
+## [2026-03-12T21:58:00Z] Refactor README.md with comprehensive module architecture and Mermaid diagrams
+- **Summary of change:** Completely restructured `README.md` to introduce a High-Level Architecture section and specific deep-dives for `core`, `patterns`, `skills`, `utils`, and `mcp`, including Mermaid diagrams for each.
+- **Files modified:** `README.md`
+- **Exact reason:** The previous documentation lacked a cohesive explanation of how the broader ecosystem (`skills`, `mcp`, `utils`) integrated with the `core` and `patterns`, making it difficult for new developers to understand the full framework architecture.
+- **Previous behavior:** `README.md` only highlighted `core` and `patterns` visually, leaving `skills`, `utils`, and `mcp` buried in feature flag lists and the architecture tree.
+- **New behavior:** `README.md` now opens with a layered architecture diagram and breaks down each of the 5 main modules with dedicated explanations and Mermaid diagrams, while preserving all existing code examples.
+- **Rollback instructions:** Revert edits to `README.md` by undoing the Git diff for these changes (`git checkout -- README.md`).
