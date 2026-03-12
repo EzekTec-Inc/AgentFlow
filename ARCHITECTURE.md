@@ -113,9 +113,11 @@ pub type ResultNode = Box<dyn NodeResult<SharedStore, SharedStore>>;
 
 `Flow` is the directed-graph executor. It routes between nodes by reading the `"action"` key from the store after each node executes.
 
-```
-node_a ──"next"──► node_b ──"done"──► node_c
-                        └──"retry"──► node_a
+```mermaid
+graph TD
+    NodeA[node_a] -->|next| NodeB[node_b]
+    NodeB -->|done| NodeC[node_c]
+    NodeB -->|retry| NodeA
 ```
 
 **Key methods:**
@@ -132,12 +134,12 @@ node_a ──"next"──► node_b ──"done"──► node_c
 
 **Routing contract:**
 1. Node writes `"action"` key into the store (e.g. `"next"`, `"retry"`, `"done"`).
-2. `Flow` reads and removes `"action"`, looks up the matching outgoing edge, advances.
+2. `Flow` acquires a write lock, reads, and **removes** `"action"` to prevent state leaks, looks up the matching outgoing edge, and advances.
 3. If no `"action"` key is written, or no matching edge exists, execution halts.
 
 ### TypedStore & TypedFlow
 
-For strict state machines where you want compile-time guarantees:
+For strict state machines where you want compile-time guarantees, `TypedFlow` provides cycle prevention and precise telemetry:
 
 ```rust
 #[derive(Clone)]
@@ -145,7 +147,7 @@ struct MyState { step: u32, result: String }
 
 let store = TypedStore::new(MyState { step: 0, result: String::new() });
 
-let mut flow = TypedFlow::new();
+let mut flow = TypedFlow::new().with_max_steps(10);
 flow.add_node("a", create_typed_node(|store: TypedStore<MyState>| async move {
     store.inner.write().await.step += 1;
     store
@@ -210,6 +212,16 @@ An autonomous decision-making unit wrapping any `Node` with:
 - **Transient vs fatal error classification** — `Timeout` is retried; `NodeFailure` is not.
 - **Result-aware variant** — `decide_result` for `ResultNode`-backed agents.
 
+```mermaid
+flowchart LR
+    Start([Input]) --> AgentNode[Agent Node]
+    AgentNode -->|Success| End([Output])
+    AgentNode -->|Transient Error| Retry{Retry limit reached?}
+    Retry -->|No| Wait[Delay]
+    Wait --> AgentNode
+    Retry -->|Yes| Error([Fatal Error])
+```
+
 ```rust
 let agent = Agent::with_retry(my_node, 3, Duration::from_millis(500));
 
@@ -221,6 +233,12 @@ let result = agent.decide_result(store, &r_node).await; // Result<SharedStore, A
 
 A sequential pipeline of nodes. Each node executes in order; the store threads through all of them.
 
+```mermaid
+flowchart LR
+    Step1[Node A] --> Step2[Node B]
+    Step2 --> Step3[Node C]
+```
+
 ```rust
 let mut wf = Workflow::new();
 wf.add_step(node_a);
@@ -231,6 +249,18 @@ let result = wf.execute_shared(store).await;
 ### MultiAgent
 
 Runs multiple agents **concurrently** using `join_all` and merges results.
+
+```mermaid
+flowchart TD
+    Input([Input Store]) --> Split{Parallel Dispatch}
+    Split --> Agent1[Agent 1]
+    Split --> Agent2[Agent 2]
+    Split --> Agent3[Agent 3]
+    Agent1 --> Merge[Merge Strategy]
+    Agent2 --> Merge
+    Agent3 --> Merge
+    Merge --> Output([Output Store])
+```
 
 | Strategy | Isolation | Output keys |
 |----------|-----------|-------------|
@@ -244,13 +274,40 @@ Scatter-gather over a dataset:
 1. **Map** — runs a node over each item, producing per-item results.
 2. **Reduce** — aggregates all results into a single store.
 
+```mermaid
+flowchart TD
+    Input([Input Array]) --> Map[Mapper Node]
+    Map -->|Item 1| M1[Mapped 1]
+    Map -->|Item 2| M2[Mapped 2]
+    Map -->|Item N| MN[Mapped N]
+    M1 --> Reduce[Reducer Node]
+    M2 --> Reduce
+    MN --> Reduce
+    Reduce --> Output([Aggregated Store])
+```
+
 ### StructuredOutput
 
 Validates and extracts a typed `T: DeserializeOwned` from the store under a given key, returning `Result<T, AgentFlowError>`.
 
+```mermaid
+flowchart LR
+    Input([Store]) --> LLM[LLM Node]
+    LLM -->|JSON Response| Extractor[Extractor]
+    Extractor -->|Valid| Success([Typed Struct])
+    Extractor -->|Invalid| Error([Error])
+```
+
 ### Rag
 
 Retrieval-augmented generation bridge. Connects a vector store (Qdrant, behind the `rag` feature flag) to a query node, injecting retrieved context into the store before the LLM call.
+
+```mermaid
+flowchart LR
+    Query([Query]) --> Retriever[Retriever Node]
+    Retriever -->|Context| Generator[Generator Node]
+    Generator --> Response([Response])
+```
 
 ---
 

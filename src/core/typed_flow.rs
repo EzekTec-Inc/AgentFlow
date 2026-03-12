@@ -5,7 +5,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 use dyn_clone::DynClone;
-use tracing::{debug, warn};
+use tracing::{debug, info, instrument, warn};
 
 /// Core Node trait for typed state
 pub trait TypedNode<T>: Send + Sync + DynClone {
@@ -92,6 +92,7 @@ impl<T> TypedFlow<T> {
     /// If `max_steps` is set and the limit is reached, execution stops silently
     /// and the current store is returned. Use [`run_safe`](Self::run_safe) to
     /// receive an explicit error instead.
+    #[instrument(name = "typed_flow.run", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
     pub async fn run(&self, mut store: TypedStore<T>) -> TypedStore<T> {
         let mut current_node_name = if let Some(name) = &self.start_node {
             name.clone()
@@ -128,11 +129,13 @@ impl<T> TypedFlow<T> {
             }
         }
 
+        info!(total_steps = steps, "TypedFlow::run complete");
         store
     }
 
     /// Execute the typed flow, returning `Err(AgentFlowError::ExecutionLimitExceeded)`
     /// if `max_steps` is reached, and `Ok(TypedStore<T>)` otherwise.
+    #[instrument(name = "typed_flow.run_safe", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
     pub async fn run_safe(
         &self,
         mut store: TypedStore<T>,
@@ -174,6 +177,7 @@ impl<T> TypedFlow<T> {
             }
         }
 
+        info!(total_steps = steps, "TypedFlow::run_safe complete");
         Ok(store)
     }
 }

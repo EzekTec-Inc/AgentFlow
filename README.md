@@ -1,7 +1,7 @@
 # AgentFlow
 
 [![Crates.io](https://img.shields.io/crates/v/agentflow.svg)](https://crates.io/crates/agentflow)
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](#license)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 
 **AgentFlow** is a provider-agnostic, async-native Rust framework for building LLM agents, RAG pipelines, multi-agent workflows, and agentic orchestration systems.
@@ -103,7 +103,7 @@ pub type SharedStore = Arc<RwLock<HashMap<String, serde_json::Value>>>;
 ```
 
 - All nodes communicate through a single `SharedStore`.
-- The `"action"` key is reserved by `Flow` for routing decisions.
+- The `"action"` key is reserved by `Flow` for routing decisions. **It is automatically consumed (removed) upon each transition** to prevent state leaks.
 - **Always drop the write guard before `.await`** to avoid deadlocks.
 
 ```rust
@@ -146,6 +146,16 @@ let node = create_result_node(|store: SharedStore| async move {
 
 Retry-aware async decision unit.
 
+```mermaid
+flowchart LR
+    Start([Input Store]) --> AgentNode[Agent Node]
+    AgentNode -->|Success| End([Output Store])
+    AgentNode -->|Transient Error| Retry{Retry limit reached?}
+    Retry -->|No| Wait[Delay]
+    Wait --> AgentNode
+    Retry -->|Yes| Error([Fatal Error])
+```
+
 ```rust
 let agent = Agent::with_retry(my_node, 3, 500); // 3 retries, 500ms delay
 let result = agent.decide_shared(store).await;
@@ -159,6 +169,20 @@ let result = agent2.decide_result(store, &my_result_node).await?;
 
 Directed graph with labeled-edge routing and infinite-loop prevention.
 
+```mermaid
+graph TD
+    Flow((Flow Engine))
+    NodeA[Node A]
+    NodeB[Node B]
+    Store[(SharedStore)]
+    
+    Flow -->|executes| NodeA
+    NodeA <-->|reads/writes| Store
+    NodeA -->|action: 'next'| Flow
+    Flow -->|routes| NodeB
+    NodeB <-->|reads/writes| Store
+```
+
 ```rust
 let mut flow = Flow::new().with_max_steps(50);
 
@@ -170,16 +194,29 @@ flow.add_edge("planner",   "execute",  "executor");
 flow.add_edge("executor",  "validate", "validator");
 flow.add_edge("validator", "retry",    "planner"); // loop back
 
-// run() writes "error" key on limit exceeded
+// run() executes until no transition matches or max_steps is hit.
+// writes "error" key to the store if limit exceeded.
 let result = flow.run(store).await;
 
-// run_safe() returns Err(ExecutionLimitExceeded) instead
+// run_safe() returns Err(ExecutionLimitExceeded) if max_steps is hit.
 let result = flow.run_safe(store).await?;
 ```
+
+### TypedFlow
+Like `Flow`, but uses compile-time typed state and function closures for routing. Fully instrumented with `tracing` to visualize state machine execution.
+
+```rust
+let mut flow = TypedFlow::<MyState>::new().with_max_steps(10);
 
 ### Workflow
 
 Linear steps with conditional branching.
+
+```mermaid
+flowchart LR
+    Step1[Node A] --> Step2[Node B]
+    Step2 --> Step3[Node C]
+```
 
 ```rust
 let mut wf = Workflow::new();
@@ -195,6 +232,18 @@ let result = wf.execute_shared(store).await;
 ### MultiAgent
 
 Parallel agent execution with configurable merge strategies.
+
+```mermaid
+flowchart TD
+    Input([Input Store]) --> Split{Parallel Dispatch}
+    Split --> Agent1[Agent 1]
+    Split --> Agent2[Agent 2]
+    Split --> Agent3[Agent 3]
+    Agent1 --> Merge[Merge Strategy]
+    Agent2 --> Merge
+    Agent3 --> Merge
+    Merge --> Output([Output Store])
+```
 
 ```rust
 // Strategy 1: SharedStore (default) — all agents share one store
@@ -213,6 +262,13 @@ let result = multi.run(store).await;
 
 ### RAG
 
+```mermaid
+flowchart LR
+    Query([Query]) --> Retriever[Retriever Node]
+    Retriever -->|Context| Generator[Generator Node]
+    Generator --> Response([Response])
+```
+
 ```rust
 let rag = Rag::new(retriever_node, generator_node);
 // retriever writes "context" → generator reads "context", writes "response"
@@ -220,6 +276,18 @@ let result = rag.call(store).await;
 ```
 
 ### MapReduce
+
+```mermaid
+flowchart TD
+    Input([Input Array]) --> Map[Mapper Node]
+    Map -->|Item 1| M1[Mapped 1]
+    Map -->|Item 2| M2[Mapped 2]
+    Map -->|Item N| MN[Mapped N]
+    M1 --> Reduce[Reducer Node]
+    M2 --> Reduce
+    MN --> Reduce
+    Reduce --> Output([Aggregated Store])
+```
 
 ```rust
 let mr = MapReduce::new(mapper_node, reducer_node);
@@ -356,4 +424,4 @@ agentflow/
 
 ## License
 
-Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at your option.
+Licensed under the GNU Affero General Public License v3.0 ([AGPL-3.0](LICENSE)).

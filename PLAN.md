@@ -178,3 +178,31 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
   - `CONTRIBUTING.md` — Contributor guide: prerequisites, code conventions, error handling rules, adding patterns/examples, PR process, and commit message format.
 * **`cargo check --all-features`** — passes cleanly.
 * **Rollback:** Delete `ARCHITECTURE.md` and `CONTRIBUTING.md`.
+
+## [2026-03-12T04:50:00Z] Fix routing state leak in Flow execution and clean up test file
+- **Summary of change:** Fixed `"action"` state leak in `Flow` graph routing and removed uncompilable test line in `TypedFlow`.
+- **Files modified:** 
+  - `src/core/flow.rs`
+  - `src/core/typed_flow.rs`
+- **Exact reason:** 
+  1. If a node executed without overwriting `"action"`, it would reuse the previous node's `"action"`, causing unintended routing or cyclic infinite loops. 
+  2. A stray `let new_earth...` line without a semicolon caused `cargo clippy` and `cargo test` compilation failures in `src/core/typed_flow.rs`.
+- **Previous behavior:** 
+  1. `Flow` acquired a read lock to parse `"action"` but left it in the store for the next node.
+  2. `test_typed_flow_execution` failed to compile.
+- **New behavior:** 
+  1. `Flow` acquires a write lock and uses `.remove("action")` so the routing intent is strictly consumed at edge transitions.
+  2. Unused `new_earth` variable removed and `cargo test` passes locally.
+- **Rollback instructions:**
+  1. Revert `src/core/flow.rs`: Change `.write().await.remove("action")` back to `.read().await.get("action")`.
+  2. Revert `src/core/typed_flow.rs`: Add `let new_earth = "New Earth <earth-emoji>"` on line 219.
+
+## [2026-03-12T04:50:20Z] Update documentation to reflect correct Flow and TypedFlow behaviors
+- **Summary of change:** Updated `README.md` and `ARCHITECTURE.md` to explicitly describe the consumption of the `"action"` routing key and the `max_steps` cycle-prevention features of `TypedFlow`.
+- **Files modified:** 
+  - `README.md`
+  - `ARCHITECTURE.md`
+- **Exact reason:** The documentation lacked explicit mention of the state-leak prevention behavior and omitted `TypedFlow`'s infinite-loop guard (`max_steps`) which were implemented during Phase 3 and the recent bugfix.
+- **Previous behavior:** Documentation described `Flow` as just "reading" and removing without explicitly noting it prevents leaks by consuming the key under a write lock, and `TypedFlow` documentation examples lacked the `.with_max_steps()` call.
+- **New behavior:** Documentation now accurately describes `Flow` extracting and consuming the `"action"` key under a write lock, and explicitly lists `with_max_steps` for `TypedFlow` examples and mentions its telemetry.
+- **Rollback instructions:** Revert edits to `README.md` and `ARCHITECTURE.md` by undoing the Git diff for these changes.

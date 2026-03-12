@@ -151,16 +151,20 @@ impl Flow {
             steps += 1;
             debug!(step = steps, node = %current_node_name, "Flow executing node");
             // Drop span before await so the future remains Send
-            drop(tracing::info_span!("flow.node", node = %current_node_name, step = steps).entered());
+            drop(
+                tracing::info_span!("flow.node", node = %current_node_name, step = steps).entered(),
+            );
             store = node.call(store).await;
 
-            // Use a read lock — we are only reading the "action" key
+            // Consume the "action" key to route, preventing it from leaking to the next node
             let action = store
-                .read()
+                .write()
                 .await
-                .get("action")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
+                .remove("action")
+                .and_then(|v| match v {
+                    serde_json::Value::String(s) => Some(s),
+                    _ => None,
+                })
                 .unwrap_or_else(|| "default".to_string());
 
             debug!(step = steps, node = %current_node_name, action = %action, "Flow transition");
@@ -261,7 +265,10 @@ mod tests {
         let node_a = create_node(|store| async move {
             {
                 let mut guard = store.write().await;
-                guard.insert("action".to_string(), serde_json::Value::String("to_b".to_string()));
+                guard.insert(
+                    "action".to_string(),
+                    serde_json::Value::String("to_b".to_string()),
+                );
             }
             store
         });
@@ -269,7 +276,10 @@ mod tests {
         let node_b = create_node(|store| async move {
             {
                 let mut guard = store.write().await;
-                guard.insert("action".to_string(), serde_json::Value::String("to_a".to_string()));
+                guard.insert(
+                    "action".to_string(),
+                    serde_json::Value::String("to_a".to_string()),
+                );
             }
             store
         });
