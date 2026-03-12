@@ -213,3 +213,11 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** `README.md` only highlighted `core` and `patterns` visually, leaving `skills`, `utils`, and `mcp` buried in feature flag lists and the architecture tree.
 - **New behavior:** `README.md` now opens with a layered architecture diagram and breaks down each of the 5 main modules with dedicated explanations and Mermaid diagrams, while preserving all existing code examples.
 - **Rollback instructions:** Revert edits to `README.md` by undoing the Git diff for these changes (`git checkout -- README.md`).
+
+## [2026-03-12T23:20:00Z] Fix syntax error in High-Level Architecture Mermaid diagram
+- **Summary of change:** Fixed unescaped text outside of node brackets in the `README.md` Mermaid diagram which caused a "Syntax error in text" rendering issue.
+- **Files modified:** `README.md`
+- **Exact reason:** The nodes in the Mermaid graph were formatted incorrectly (e.g., `Skills(skills)<br>YAML Definitions` instead of `Skills("skills<br>YAML Definitions")`), causing Markdown parsers to fail at rendering the diagram.
+- **Previous behavior:** High-Level Architecture Mermaid diagram failed to render due to syntax errors.
+- **New behavior:** High-Level Architecture Mermaid diagram renders correctly with quoted node labels.
+- **Rollback instructions:** Revert edits to `README.md` by undoing the Git diff for this commit.

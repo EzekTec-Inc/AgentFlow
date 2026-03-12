@@ -16,12 +16,12 @@ AgentFlow is composed of five distinct layers designed to work together seamless
 
 ```mermaid
 graph TD
-    Client[External Client<br>Cursor / Claude Desktop] -->|stdio| MCP(mcp)
+    Client["External Client<br>Cursor / Claude Desktop"] -->|stdio| MCP("mcp")
     MCP --> Patterns
-    Skills(skills)<br>YAML Definitions -->|generates| Patterns
-    Patterns(patterns)<br>Agent, Workflow, RAG --> Core
-    Core(core)<br>Flow, Nodes, SharedStore --> Utils
-    Utils(utils)<br>System Tools, Shell --> OS[Operating System]
+    Skills("skills<br>YAML Definitions") -->|generates| Patterns
+    Patterns("patterns<br>Agent, Workflow, RAG") --> Core
+    Core("core<br>Flow, Nodes, SharedStore") --> Utils
+    Utils("utils<br>System Tools, Shell") --> OS["Operating System"]
     
     classDef layer fill:#f9f,stroke:#333,stroke-width:2px;
     class MCP,Skills,Patterns,Core,Utils layer;
