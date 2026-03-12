@@ -221,3 +221,14 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** High-Level Architecture Mermaid diagram failed to render due to syntax errors.
 - **New behavior:** High-Level Architecture Mermaid diagram renders correctly with quoted node labels.
 - **Rollback instructions:** Revert edits to `README.md` by undoing the Git diff for this commit.
+
+## [2026-03-12T23:30:00Z] Generate developer documentation for all examples
+- **Summary of change:** Extracted the developer-targeted code documentation from all 20 `examples/*.rs` files into dedicated `examples/*.md` files, preserving the exact example names. Merged old `DYNAMIC-ORCHESTRATOR` md files into `dynamic_orchestrator.md` and deleted the old ones.
+- **Files modified:** 
+  - Added 20 new `examples/*.md` files.
+  - Deleted `examples/DYNAMIC-ORCHESTRATOR-DOC.md`
+  - Deleted `examples/DYNAMIC-ORCHESTRATOR.md`
+- **Exact reason:** To provide explicit, developer-targeted documentation detailing the purpose, mechanics, and usage of each example, directly beside the source code, as requested.
+- **Previous behavior:** Only a few examples had dedicated Markdown files (with inconsistent naming).
+- **New behavior:** Every example has a dedicated, identically-named `*.md` file explaining how it works, how to adapt it, and providing code examples.
+- **Rollback instructions:** Revert this commit using `git revert HEAD` to restore the deleted `DYNAMIC-` files and remove all newly generated `*.md` files.
