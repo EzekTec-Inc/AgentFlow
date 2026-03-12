@@ -16,7 +16,7 @@ AgentFlow is composed of five distinct layers designed to work together seamless
 
 ```mermaid
 graph TD
-    Client["External Client<br>Cursor / Claude Desktop"] -->|stdio| MCP("mcp")
+    Client["AgentFlow framework"] -->|stdio| MCP("mcp")
     MCP --> Patterns
     Skills("skills<br>YAML Definitions") -->|generates| Patterns
     Patterns("patterns<br>Agent, Workflow, RAG") --> Core

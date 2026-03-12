@@ -232,3 +232,12 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** Only a few examples had dedicated Markdown files (with inconsistent naming).
 - **New behavior:** Every example has a dedicated, identically-named `*.md` file explaining how it works, how to adapt it, and providing code examples.
 - **Rollback instructions:** Revert this commit using `git revert HEAD` to restore the deleted `DYNAMIC-` files and remove all newly generated `*.md` files.
+
+## [2026-03-12T23:45:00Z] Rename all example markdown documentation files to uppercase
+- **Summary of change:** Renamed all 20 generated developer documentation files in `examples/` from lowercase to uppercase (e.g., `agent.md` to `AGENT.md`).
+- **Files modified:** 
+  - `examples/*.md` (Renamed using `git mv`)
+- **Exact reason:** Per user request, the documentation files should have uppercase filenames.
+- **Previous behavior:** Markdown files were lowercase.
+- **New behavior:** Markdown filenames are all uppercase with `.md` extension.
+- **Rollback instructions:** Revert this commit using `git revert HEAD` to restore the lowercase filenames.
