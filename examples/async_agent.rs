@@ -2,7 +2,7 @@
 # Example: async_agent.rs
 
 **Purpose:**
-Showcases running multiple agents concurrently (async/parallel) using PocketFlow and rig.
+Showcases running multiple agents concurrently (async/parallel) using AgentFlow and rig.
 
 **How it works:**
 - Defines two LLM nodes with different prompts.

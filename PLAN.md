@@ -249,3 +249,15 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** Markdown files contained only text descriptions of the examples.
 - **New behavior:** Every example documentation file now contains a `## Implementation Architecture` section with a targeted Mermaid diagram illustrating the flow and AgentFlow components used.
 - **Rollback instructions:** Revert this commit using `git revert HEAD` to remove the Mermaid diagrams from the documentation files.
+
+## [2026-03-13T00:00:00Z] Replace mentions of PocketFlow with AgentFlow
+- **Summary of change:** Scanned the entire codebase for mentions of `pocketflow` (case-insensitive) and replaced them with `AgentFlow`.
+- **Files modified:** 
+  - `examples/AGENT.md`
+  - `examples/ASYNC_AGENT.md`
+  - `examples/agent.rs`
+  - `examples/async_agent.rs`
+- **Exact reason:** To ensure consistent branding across the codebase per the user's request.
+- **Previous behavior:** Several examples still referenced the old name "PocketFlow".
+- **New behavior:** All examples now correctly reference "AgentFlow".
+- **Rollback instructions:** Revert this commit using `git revert HEAD` to restore the references to PocketFlow.

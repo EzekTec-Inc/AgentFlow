@@ -5,7 +5,7 @@
 # Example: async_agent.rs
 
 **Purpose:**
-Showcases running multiple agents concurrently (async/parallel) using PocketFlow and rig.
+Showcases running multiple agents concurrently (async/parallel) using AgentFlow and rig.
 
 
 ## Implementation Architecture

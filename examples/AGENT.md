@@ -5,7 +5,7 @@
 # Example: agent.rs
 
 **Purpose:**
-Demonstrates how to create a single LLM-powered agent using PocketFlow and the rig crate, including retry logic and both ergonomic and low-level usage.
+Demonstrates how to create a single LLM-powered agent using AgentFlow and the rig crate, including retry logic and both ergonomic and low-level usage.
 
 
 ## Implementation Architecture
