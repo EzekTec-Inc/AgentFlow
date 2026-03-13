@@ -83,9 +83,10 @@ pub mod prelude {
     pub use crate::core::error::AgentFlowError;
     pub use crate::core::flow::Flow;
     pub use crate::core::node::{
-        create_batch_node, create_node, create_result_node, Node, NodeResult, ResultNode,
-        SharedStore, SimpleNode,
+        create_batch_node, create_diff_node, create_node, create_result_node, Node, NodeResult,
+        ResultNode, SharedStore, SimpleNode, StateDiff,
     };
+    pub use crate::core::parallel::ParallelFlow;
     pub use crate::core::store::Store;
     pub use crate::patterns::agent::Agent;
     pub use crate::patterns::mapreduce::MapReduce;
@@ -93,15 +94,19 @@ pub mod prelude {
     pub use crate::patterns::rag::Rag;
     pub use crate::patterns::structured_output::StructuredOutput;
     pub use crate::patterns::workflow::Workflow;
+    pub use crate::utils::tool::{
+        create_corrective_retry_node, ToolEntry, ToolRegistry,
+    };
 }
 
 // Direct exports to match a flat namespace
 pub use crate::core::batch::{Batch, ParallelBatch};
 pub use crate::core::flow::Flow;
 pub use crate::core::node::{
-    create_batch_node, create_node, create_result_node, Node, NodeResult, ResultNode, SharedStore,
-    SimpleNode,
+    create_batch_node, create_diff_node, create_node, create_result_node, Node, NodeResult,
+    ResultNode, SharedStore, SimpleNode, StateDiff,
 };
+pub use crate::core::parallel::ParallelFlow;
 pub use crate::core::store::Store;
 pub use crate::patterns::agent::Agent;
 pub use crate::patterns::mapreduce::MapReduce;

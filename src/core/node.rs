@@ -179,6 +179,141 @@ where
     Box::new(ResultFuncNode(func))
 }
 
+// ── StateDiff ────────────────────────────────────────────────────────────────
+
+/// A set of key-value changes a node wants to apply to the [`SharedStore`].
+///
+/// Using `StateDiff` is the safest way to write node logic because it
+/// **eliminates the possibility of holding a write-lock across an `.await`
+/// point** — the most common cause of deadlocks in async AgentFlow code.
+///
+/// # How it works
+///
+/// Instead of receiving a `SharedStore` and mutating it directly, a
+/// *diff node* (created with [`create_diff_node`]) receives a **read-only
+/// snapshot** of the current state (`HashMap<String, Value>`), performs its
+/// async work (LLM calls, tool invocations, etc.) without touching any lock,
+/// and returns a `StateDiff` describing what should change.  The framework
+/// applies those changes to the live store after the node's future resolves —
+/// guaranteeing the write lock is never held across a suspension point.
+///
+/// # Routing
+///
+/// Set the reserved `"action"` key inside the diff to control which edge the
+/// [`Flow`] will follow after this node, exactly as with [`create_node`].
+///
+/// [`Flow`]: crate::core::flow::Flow
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use agentflow::core::node::{create_diff_node, StateDiff};
+/// use serde_json::json;
+///
+/// let node = create_diff_node(|snapshot| async move {
+///     // `snapshot` is a plain HashMap — no lock, no Arc, no await needed.
+///     let name = snapshot.get("name")
+///         .and_then(|v| v.as_str())
+///         .unwrap_or("world");
+///
+///     // Simulate an async operation (e.g. an LLM call) — no lock held here.
+///     // tokio::time::sleep(...).await;
+///
+///     let mut diff = StateDiff::new();
+///     diff.set("greeting", json!(format!("Hello, {name}!")));
+///     diff.set("action", json!("next"));
+///     diff
+/// });
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct StateDiff {
+    changes: HashMap<String, Value>,
+}
+
+impl StateDiff {
+    /// Create an empty diff.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record that `key` should be set to `value` in the store.
+    pub fn set(&mut self, key: impl Into<String>, value: Value) {
+        self.changes.insert(key.into(), value);
+    }
+
+    /// Record that `key` should be removed from the store.
+    ///
+    /// Internally this stores a sentinel `Value::Null` for the key.
+    /// The framework interprets `Null` as a deletion instruction.
+    pub fn remove(&mut self, key: impl Into<String>) {
+        self.changes.insert(key.into(), Value::Null);
+    }
+
+    /// Consume the diff and return the inner change map.
+    pub fn into_changes(self) -> HashMap<String, Value> {
+        self.changes
+    }
+}
+
+/// Create a [`SimpleNode`] whose logic never touches the [`SharedStore`] lock.
+///
+/// The closure receives a **read-only snapshot** (`HashMap<String, Value>`) of
+/// the current store state.  It returns a [`StateDiff`] that the framework
+/// applies atomically after the future resolves.
+///
+/// - Keys in the diff set to [`Value::Null`] are **deleted** from the store.
+/// - All other keys are **upserted** (inserted or overwritten).
+///
+/// This is the recommended way to write nodes that contain `.await` points,
+/// as it makes deadlocks structurally impossible.
+///
+/// See [`StateDiff`] for a full example.
+pub fn create_diff_node<F, Fut>(func: F) -> SimpleNode
+where
+    F: Fn(HashMap<String, Value>) -> Fut + Send + Sync + Clone + 'static,
+    Fut: Future<Output = StateDiff> + Send + 'static,
+{
+    #[derive(Clone)]
+    struct DiffNode<F>(F);
+
+    impl<F, Fut> Node<SharedStore, SharedStore> for DiffNode<F>
+    where
+        F: Fn(HashMap<String, Value>) -> Fut + Send + Sync + Clone,
+        Fut: Future<Output = StateDiff> + Send + 'static,
+    {
+        fn call(
+            &self,
+            store: SharedStore,
+        ) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
+            Box::pin(async move {
+                // Take a cheap read-only snapshot — lock released immediately.
+                let snapshot = store.read().await.clone();
+
+                // Run user logic with NO lock held.
+                let diff = self.0(snapshot).await;
+
+                // Apply changes under a single, brief write lock.
+                {
+                    let mut guard = store.write().await;
+                    for (key, value) in diff.into_changes() {
+                        if value.is_null() {
+                            guard.remove(&key);
+                        } else {
+                            guard.insert(key, value);
+                        }
+                    }
+                }
+
+                store
+            })
+        }
+    }
+
+    Box::new(DiffNode(func))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 /// Create a [`SimpleNode`] with a built-in prep → exec (with retry) → post pipeline.
 ///
 /// This is useful when you need to separate concerns:

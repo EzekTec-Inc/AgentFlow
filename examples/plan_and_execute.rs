@@ -15,13 +15,13 @@ use agentflow::core::error::AgentFlowError;
 use agentflow::core::flow::Flow;
 use agentflow::core::node::{create_node, SharedStore};
 use dotenvy::dotenv;
+use rig::prelude::*;
+use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing_subscriber::{fmt, EnvFilter};
-use rig::prelude::*;
-use rig::{completion::Prompt, providers};
 
 const PLANNER_SYSTEM: &str =
     "You are a planning assistant. Given a goal, output a numbered list of concrete, \
@@ -29,8 +29,7 @@ const PLANNER_SYSTEM: &str =
      starting with its number and a period (e.g. '1. Do X'). \
      Output only the numbered list — no headings, no extra text.";
 
-const EXECUTOR_SYSTEM: &str =
-    "You are a skilled assistant that executes tasks concisely. \
+const EXECUTOR_SYSTEM: &str = "You are a skilled assistant that executes tasks concisely. \
      Given a task description, perform it and output only the result. \
      Be concise but complete — 2-4 sentences per task.";
 
@@ -55,7 +54,9 @@ fn parse_plan(raw: &str) -> Vec<String> {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    fmt().with_env_filter(EnvFilter::new("agentflow=debug,plan_and_execute=debug")).init();
+    fmt()
+        .with_env_filter(EnvFilter::new("agentflow=debug,plan_and_execute=debug"))
+        .init();
 
     // 1 planner step + N executor steps. 20 is safe for plans up to 19 tasks.
     let mut flow = Flow::new().with_max_steps(20);
@@ -65,30 +66,38 @@ async fn main() {
         Box::pin(async move {
             let goal = {
                 let g = store.read().await;
-                g.get("goal").and_then(|v| v.as_str()).unwrap_or("").to_string()
+                g.get("goal")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
             };
 
             println!("[Planner] Goal: {}", goal);
             println!("[Planner] Generating plan…");
 
             let client = providers::openai::Client::from_env();
-            let agent  = client.agent("gpt-4o-mini").preamble(PLANNER_SYSTEM).build();
+            let agent = client.agent("gpt-4o-mini").preamble(PLANNER_SYSTEM).build();
 
             let raw = match agent.prompt(&goal).await {
-                Ok(r)  => r,
-                Err(e) => { eprintln!("[Planner] LLM error: {e}"); String::new() }
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("[Planner] LLM error: {e}");
+                    String::new()
+                }
             };
 
             let tasks = parse_plan(&raw);
             println!("[Planner] {} tasks generated:", tasks.len());
-            for (i, t) in tasks.iter().enumerate() { println!("  {}. {}", i + 1, t); }
+            for (i, t) in tasks.iter().enumerate() {
+                println!("  {}. {}", i + 1, t);
+            }
 
             let plan_json: Vec<Value> = tasks.into_iter().map(Value::String).collect();
 
             let mut g = store.write().await;
-            g.insert("plan".to_string(),    Value::Array(plan_json));
+            g.insert("plan".to_string(), Value::Array(plan_json));
             g.insert("results".to_string(), Value::Array(vec![]));
-            g.insert("action".to_string(),  Value::String("execute".to_string()));
+            g.insert("action".to_string(), Value::String("execute".to_string()));
             drop(g);
             store
         })
@@ -111,17 +120,23 @@ async fn main() {
 
             let Some(task) = task else {
                 // Plan is empty — signal completion
-                store.write().await.insert("action".to_string(), Value::String("done".to_string()));
+                store
+                    .write()
+                    .await
+                    .insert("action".to_string(), Value::String("done".to_string()));
                 return store;
             };
 
             println!("\n[Executor] Task: {}", task);
 
             let client = providers::openai::Client::from_env();
-            let agent  = client.agent("gpt-4o-mini").preamble(EXECUTOR_SYSTEM).build();
+            let agent = client
+                .agent("gpt-4o-mini")
+                .preamble(EXECUTOR_SYSTEM)
+                .build();
 
             let result = match agent.prompt(&task).await {
-                Ok(r)  => r,
+                Ok(r) => r,
                 Err(e) => format!("Error executing task: {e}"),
             };
             println!("[Executor] Result: {}", result.trim());
@@ -137,7 +152,8 @@ async fn main() {
             }
 
             // Keep looping if tasks remain, else signal done
-            let still_tasks = g.get("plan")
+            let still_tasks = g
+                .get("plan")
                 .and_then(|v| v.as_array())
                 .map(|a| !a.is_empty())
                 .unwrap_or(false);
@@ -151,16 +167,19 @@ async fn main() {
         })
     });
 
-    flow.add_node("planner",  planner);
+    flow.add_node("planner", planner);
     flow.add_node("executor", executor);
-    flow.add_edge("planner",  "execute", "executor");
+    flow.add_edge("planner", "execute", "executor");
     flow.add_edge("executor", "execute", "executor"); // self-loop while tasks remain
-    // "done" has no edge → flow stops naturally
+                                                      // "done" has no edge → flow stops naturally
 
     let goal = "Write a short technical report on how Rust prevents memory safety bugs";
 
     let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
-    store.write().await.insert("goal".to_string(), Value::String(goal.to_string()));
+    store
+        .write()
+        .await
+        .insert("goal".to_string(), Value::String(goal.to_string()));
 
     println!("=== Plan-and-Execute Agent ===");
     println!("Goal: {}\n", goal);
