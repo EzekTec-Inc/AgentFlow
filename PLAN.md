@@ -270,3 +270,12 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** Markdown had incorrect model names (`gpt-4.1-mini`), a wrongly typed file extension in references (`DYNAMIC-ORCHESTRATOR.md`), and potentially outdated descriptions.
 - **New behavior:** Documentation now correctly references `gpt-4o-mini`, standardises the filename as `DYNAMIC_ORCHESTRATOR.md`, and accurately reflects the `dynamic_orchestrator.rs` functionalities (which were mostly already perfectly described).
 - **Rollback instructions:** Revert this commit using `git revert HEAD` to restore the outdated references in the documentation.
+
+## [2026-03-13T00:20:00Z] Fix routing logic and tool output parsing in orchestrator_with_tools.rs
+- **Summary of change:** Modified `orchestrator_with_tools.rs` to correctly route from the `tool` node back to the `reasoner` node, and updated the ReAct response parsing to handle cases where the LLM returns both `ACTION:` and `ANSWER:` strings in a single response.
+- **Files modified:** 
+  - `examples/orchestrator_with_tools.rs`
+- **Exact reason:** The user noticed the example was failing to correctly utilize tools. The issue was twofold: `create_tool_node` does not emit an action (defaults to "default"), so the hardcoded `use_tool` edge was never triggered. Second, the LLM sometimes returned both an action and an answer, trapping the agent in an infinite loop.
+- **Previous behavior:** The flow would either immediately terminate after tool execution due to a missing edge, or infinitely loop hitting max steps because it couldn't parse the final answer correctly.
+- **New behavior:** The flow correctly transitions from the `tool` node back to the `reasoner` node using the `default` edge, and the parser successfully extracts the final `ANSWER:`, breaking the loop and delivering the real tool output.
+- **Rollback instructions:** Revert this commit using `git revert HEAD`.

@@ -91,13 +91,16 @@ async fn main() {
                     println!("[ReAct Reasoner] {}", reply.trim());
 
                     let mut g = s.write().await;
-                    if reply.trim().starts_with("ANSWER:") {
-                        let ans = reply.trim().strip_prefix("ANSWER:").unwrap_or("").trim().to_string();
+                    if let Some(idx) = reply.find("ANSWER:") {
+                        let ans = reply[idx + "ANSWER:".len()..].trim().to_string();
                         g.insert("sub_answer".to_string(), Value::String(ans));
                         g.insert("action".to_string(),     Value::String("done".to_string()));
-                    } else {
-                        // ACTION: sysinfo
+                    } else if reply.contains("ACTION: sysinfo") {
                         g.insert("action".to_string(), Value::String("use_tool".to_string()));
+                    } else {
+                        // Fallback if the LLM didn't format properly
+                        g.insert("sub_answer".to_string(), Value::String(reply.clone()));
+                        g.insert("action".to_string(),     Value::String("done".to_string()));
                     }
                     drop(g);
                     s
@@ -110,7 +113,7 @@ async fn main() {
             react.add_node("reasoner", reasoner);
             react.add_node("tool",     tool);
             react.add_edge("reasoner", "use_tool", "tool");
-            react.add_edge("tool",     "use_tool", "reasoner"); // tool keeps action="use_tool"
+            react.add_edge("tool",     "default", "reasoner"); // tool node doesn't set an action, defaults to "default"
 
             // Inject sub-task into store
             store.write().await.insert(

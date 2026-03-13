@@ -123,7 +123,7 @@ async fn main() {
             Box::pin(async move {
                 let facts = get_string_from_store(&store, "research_facts").await;
                 format!(
-                    "Write a TypeScript function that prints one fun fact about maple syrup, chosen from the following list:\n{}\nOutput only the TypeScript code.",
+                    "Write a TypeScript function that prints key facts identified, chosen from the following list:\n{}\nOutput only the TypeScript code.",
                     facts
                 )
             })
