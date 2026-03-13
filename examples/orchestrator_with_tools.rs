@@ -20,16 +20,15 @@ use agentflow::core::flow::Flow;
 use agentflow::core::node::{create_node, SharedStore};
 use agentflow::utils::tool::create_tool_node;
 use dotenvy::dotenv;
+use rig::prelude::*;
+use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing_subscriber::{fmt, EnvFilter};
-use rig::prelude::*;
-use rig::{completion::Prompt, providers};
 
-const REASONER_SYSTEM: &str =
-    "You are a system-info assistant. You have one tool:\n\
+const REASONER_SYSTEM: &str = "You are a system-info assistant. You have one tool:\n\
      - sysinfo: runs `uname -a` and returns the output.\n\
      Respond with EXACTLY one of:\n\
        ACTION: sysinfo\n\
@@ -42,9 +41,9 @@ const ORCHESTRATOR_SYSTEM: &str =
 
 async fn llm(system: &str, user: &str) -> String {
     let client = providers::openai::Client::from_env();
-    let agent  = client.agent("gpt-4o-mini").preamble(system).build();
+    let agent = client.agent("gpt-4.1").preamble(system).build();
     match agent.prompt(user).await {
-        Ok(r)  => r,
+        Ok(r) => r,
         Err(e) => format!("LLM error: {e}"),
     }
 }
@@ -52,14 +51,20 @@ async fn llm(system: &str, user: &str) -> String {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    fmt().with_env_filter(EnvFilter::new("agentflow=debug,orchestrator_with_tools=debug")).init();
+    fmt()
+        .with_env_filter(EnvFilter::new(
+            "agentflow=debug,orchestrator_with_tools=debug",
+        ))
+        .init();
 
     println!("=== Orchestrator with Tool-Using Sub-Agent ===\n");
 
     // ── Main orchestrator node ────────────────────────────────────────────────
     let orchestrator = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let task = store.read().await
+            let task = store
+                .read()
+                .await
                 .get("main_task")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
@@ -76,14 +81,19 @@ async fn main() {
                     let (task, tool_out) = {
                         let g = s.read().await;
                         (
-                            g.get("sub_task").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                            g.get("sysinfo_stdout").and_then(|v| v.as_str()).map(|x| x.to_string()),
+                            g.get("sub_task")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
+                            g.get("sysinfo_stdout")
+                                .and_then(|v| v.as_str())
+                                .map(|x| x.to_string()),
                         )
                     };
 
                     let user_msg = match &tool_out {
                         Some(out) => format!("Task: {}\n\nTool output:\n{}", task, out),
-                        None      => format!("Task: {}", task),
+                        None => format!("Task: {}", task),
                     };
 
                     println!("[ReAct Reasoner] Thinking…");
@@ -94,13 +104,13 @@ async fn main() {
                     if let Some(idx) = reply.find("ANSWER:") {
                         let ans = reply[idx + "ANSWER:".len()..].trim().to_string();
                         g.insert("sub_answer".to_string(), Value::String(ans));
-                        g.insert("action".to_string(),     Value::String("done".to_string()));
+                        g.insert("action".to_string(), Value::String("done".to_string()));
                     } else if reply.contains("ACTION: sysinfo") {
                         g.insert("action".to_string(), Value::String("use_tool".to_string()));
                     } else {
                         // Fallback if the LLM didn't format properly
                         g.insert("sub_answer".to_string(), Value::String(reply.clone()));
-                        g.insert("action".to_string(),     Value::String("done".to_string()));
+                        g.insert("action".to_string(), Value::String("done".to_string()));
                     }
                     drop(g);
                     s
@@ -111,20 +121,24 @@ async fn main() {
             let tool = create_tool_node("sysinfo", "uname", vec!["-a".to_string()]);
 
             react.add_node("reasoner", reasoner);
-            react.add_node("tool",     tool);
+            react.add_node("tool", tool);
             react.add_edge("reasoner", "use_tool", "tool");
-            react.add_edge("tool",     "default", "reasoner"); // tool node doesn't set an action, defaults to "default"
+            react.add_edge("tool", "default", "reasoner"); // tool node doesn't set an action, defaults to "default"
 
             // Inject sub-task into store
             store.write().await.insert(
                 "sub_task".to_string(),
-                Value::String("Find out the current operating system and kernel version.".to_string()),
+                Value::String(
+                    "Find out the current operating system and kernel version.".to_string(),
+                ),
             );
 
             let store = react.run(store).await;
 
             // ── Orchestrator summarises the sub-agent result ──────────────────
-            let sub_answer = store.read().await
+            let sub_answer = store
+                .read()
+                .await
                 .get("sub_answer")
                 .and_then(|v| v.as_str())
                 .unwrap_or("No answer returned.")
@@ -136,10 +150,14 @@ async fn main() {
             let report = llm(
                 ORCHESTRATOR_SYSTEM,
                 &format!("Main task: {}\n\nSub-agent answer: {}", task, sub_answer),
-            ).await;
+            )
+            .await;
 
             println!("\n[Orchestrator] Report:\n{}", report.trim());
-            store.write().await.insert("final_report".to_string(), Value::String(report));
+            store
+                .write()
+                .await
+                .insert("final_report".to_string(), Value::String(report));
             store
         })
     });
@@ -152,5 +170,8 @@ async fn main() {
 
     let final_store = orchestrator.call(store).await;
     let g = final_store.read().await;
-    println!("\n=== Final Report ===\n{}", g.get("final_report").and_then(|v| v.as_str()).unwrap_or(""));
+    println!(
+        "\n=== Final Report ===\n{}",
+        g.get("final_report").and_then(|v| v.as_str()).unwrap_or("")
+    );
 }
