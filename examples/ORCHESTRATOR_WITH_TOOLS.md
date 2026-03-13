@@ -1,33 +1,51 @@
 # Example: orchestrator_with_tools
 
-*This documentation is automatically generated from the source code.*
+*This documentation is generated from the source code.*
 
 # Example: orchestrator_with_tools.rs
 
-Real-world orchestrator that delegates to a ReAct sub-agent. The sub-agent
-uses a real shell tool (`uname -a`) and passes the result back to the
-Orchestrator LLM, which then writes a human-readable system summary.
+**Purpose:**
+Demonstrates a ReAct-style orchestrator that routes between a reasoning LLM and real shell tool calls, using `ToolRegistry` to prevent LLM-generated tool names from executing arbitrary binaries.
 
-How it works:
-1. Orchestrator (LLM) receives the main task and delegates to the ReAct flow.
-2. ReAct Reasoner (LLM) decides to call the `sysinfo` tool.
-3. Tool executor runs `uname -a` via the built-in create_tool_node.
-4. ReAct Reasoner (LLM) reads the tool output and produces a final answer.
-5. Orchestrator (LLM) formats the answer into a polished report.
+**How it works:**
+1. `reasoner` node — LLM receives the task and emits either `ACTION: <tool_name>` or `ANSWER: <result>`.
+2. The flow reads the `"action"` key:
+   - `use_tool` edge → `tool` node runs the shell tool via `ToolRegistry`.
+   - `done` edge → flow terminates; answer is in the store.
+3. `tool` node writes `{tool_name}_output` to the store and emits no action (default edge).
+4. `default` edge from `tool` routes back to `reasoner`, which reads the tool output.
+5. The parser extracts `ANSWER:` first; if present, the loop breaks regardless of any `ACTION:` also present.
 
-Requires: OPENAI_API_KEY
-Run with: cargo run --example orchestrator-with-tools
+**How to adapt:**
+- Add more tools via `ToolRegistry::register` without changing the Flow topology.
+- Replace the default merge with `create_diff_node` for deadlock-safe store access inside `reasoner`.
+- Set `flow.with_max_steps(n)` to guard against ReAct loops that never terminate.
+
+**Requires:** `OPENAI_API_KEY`
+**Run with:** `cargo run --example orchestrator-with-tools`
+
+---
 
 ## Implementation Architecture
 
 ```mermaid
 graph TD
-    Goal[(Goal)] --> Planner[Orchestrator Node]
-    Planner -->|Tool Call Decision| Tool[Tool Node<br>e.g. Shell/Fetch]
-    Tool -->|Tool Output| Planner
-    Planner -->|Done| Final[(Final Output)]
-    
-    classDef tool fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
-    class Tool tool;
+    Task[(Task<br>SharedStore)] --> Reasoner[Reasoner Node<br>ReAct LLM]
+    Reasoner -->|action:use_tool| ToolNode[Tool Node<br>ToolRegistry exec]
+    Reasoner -->|action:done| End([Done])
+    ToolNode -->|default edge| Reasoner
+    ToolNode -->|writes output_key| Store[(SharedStore)]
+
+    classDef secure fill:#fce4ec,stroke:#880e4f,stroke-width:2px;
+    class ToolNode secure;
 ```
 
+**ToolRegistry example:**
+```rust
+let mut registry = ToolRegistry::new();
+registry.register("sysinfo",  "uname",    vec!["-a".into()], None);
+registry.register("hostname", "hostname", vec![],            None);
+
+// LLM says ACTION: rm  →  Err(NotFound) — blocked
+let node = registry.create_node("sysinfo").unwrap();
+```

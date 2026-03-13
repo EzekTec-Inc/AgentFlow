@@ -1,7 +1,7 @@
 # AgentFlow — Architecture Reference
 
-> **Version:** 0.2.0  
-> **Last updated:** 2026-03-10
+> **Version:** 0.2.0
+> **Last updated:** 2026-03-13
 
 ---
 
@@ -10,36 +10,24 @@
 1. [Design Philosophy](#design-philosophy)
 2. [Crate Layout](#crate-layout)
 3. [Core Primitives](#core-primitives)
-   - [SharedStore](#sharedstore)
-   - [Node & NodeResult](#node--noderesult)
-   - [Flow](#flow)
-   - [TypedStore & TypedFlow](#typedstore--typedflow)
-   - [Store (ergonomic wrapper)](#store-ergonomic-wrapper)
-   - [Batch & ParallelBatch](#batch--parallelbatch)
-   - [AgentFlowError](#agentflowerror)
 4. [Patterns](#patterns)
-   - [Agent](#agent)
-   - [Workflow](#workflow)
-   - [MultiAgent](#multiagent)
-   - [MapReduce](#mapreduce)
-   - [StructuredOutput](#structuredoutput)
-   - [Rag](#rag)
-5. [Routing Model](#routing-model)
-6. [Feature Flags](#feature-flags)
-7. [Concurrency & Safety Rules](#concurrency--safety-rules)
-8. [How Pieces Snap Together](#how-pieces-snap-together)
+5. [Utils](#utils)
+6. [Skills](#skills)
+7. [MCP](#mcp)
+8. [Routing Model](#routing-model)
+9. [Feature Flags](#feature-flags)
+10. [Concurrency Rules](#concurrency-rules)
+11. [Composability Diagram](#composability-diagram)
 
 ---
 
 ## Design Philosophy
 
-| Principle | What it means in practice |
-|-----------|--------------------------|
-| **Bring your own LLM** | AgentFlow is orchestration-only. LLM calls live inside your nodes (`rig-core`, `async-openai`, any HTTP client). |
-| **Graph + Shared Store** | Every pattern is a directed graph of `Node`s that communicate through a `SharedStore`. |
-| **Composable** | Primitives snap together. A `Flow` can contain a `Workflow`; a `MultiAgent` can contain `Agent`s. |
-| **Async-first** | All execution is `async`/`await`. Concurrent patterns use Tokio tasks under the hood. |
-| **Type-safe escape hatch** | `SharedStore` (flexible JSON map) and `TypedStore<T>` (compile-time struct) coexist so you choose the right tool. |
+1. **Bring your own LLM** — AgentFlow is provider-agnostic. Wire in `rig`, `async-openai`, or any async HTTP client.
+2. **Store-centric** — All state lives in a `SharedStore` (`Arc<RwLock<HashMap<String, Value>>>`). Nodes read and write the same bus; no hidden channels.
+3. **Nodes as functions** — A node is an async closure `|SharedStore| -> Future<Output = SharedStore>`. No trait impl required.
+4. **Composable patterns** — `Flow`, `TypedFlow`, `ParallelFlow`, `Agent`, `Workflow`, `MapReduce`, etc. compose freely.
+5. **Fail-safe by default** — `Flow` consumes the `"action"` routing key under a write lock on every transition, preventing state leaks and infinite routing loops.
 
 ---
 
@@ -47,30 +35,29 @@
 
 ```
 src/
-├── lib.rs                  # Public API surface + prelude
 ├── core/
-│   ├── node.rs             # Node, NodeResult, SharedStore, factory fns
-│   ├── flow.rs             # Flow — the graph executor
-│   ├── store.rs            # Store — ergonomic typed wrapper over SharedStore
-│   ├── typed_store.rs      # TypedStore<T> — compile-time typed state
-│   ├── typed_flow.rs       # TypedFlow<T> — typed graph executor
-│   ├── batch.rs            # Batch, ParallelBatch
-│   ├── error.rs            # AgentFlowError
-│   └── mod.rs
+│   ├── node.rs          SimpleNode, ResultNode, StateDiff, create_node,
+│   │                    create_result_node, create_diff_node
+│   ├── flow.rs          Flow — labeled-edge graph executor
+│   ├── parallel.rs      ParallelFlow — fan-out / fan-in
+│   ├── store.rs         Store — ergonomic typed wrapper
+│   ├── typed_store.rs   TypedStore<T>
+│   ├── typed_flow.rs    TypedFlow<T> — compile-time typed state machine
+│   ├── batch.rs         Batch, ParallelBatch
+│   └── error.rs         AgentFlowError
 ├── patterns/
-│   ├── agent.rs            # Agent — retry + decision loop
-│   ├── workflow.rs         # Workflow — sequential pipeline
-│   ├── multi_agent.rs      # MultiAgent — concurrent fan-out
-│   ├── mapreduce.rs        # MapReduce — scatter/gather
-│   ├── structured_output.rs# StructuredOutput — schema-validated output
-│   ├── rag.rs              # Rag — retrieval-augmented generation
-│   ├── batchflow.rs        # BatchFlow — batch processing over flows
-│   ├── rpi.rs              # RpiWorkflow (skills feature)
-│   └── mod.rs
+│   ├── agent.rs         Agent — retry, decide, decide_result
+│   ├── workflow.rs      Workflow
+│   ├── multi_agent.rs   MultiAgent (Shared / Namespaced / Custom)
+│   ├── rag.rs           Rag
+│   ├── mapreduce.rs     MapReduce
+│   ├── structured_output.rs
+│   └── rpi.rs           RpiWorkflow
 ├── utils/
-│   └── tool.rs             # Shell tool nodes
-├── skills/                 # (feature: skills) YAML skill parser
-└── mcp/                    # (feature: mcp) MCP stdio server
+│   └── tool.rs          create_tool_node, ToolRegistry,
+│                        create_corrective_retry_node
+├── skills/              (feature: skills) YAML skill parser
+└── mcp/                 (feature: mcp) MCP stdio server
 ```
 
 ---
@@ -80,122 +67,124 @@ src/
 ### SharedStore
 
 ```rust
-pub type SharedStore = Arc<tokio::sync::RwLock<HashMap<String, serde_json::Value>>>;
+pub type SharedStore = Arc<RwLock<HashMap<String, serde_json::Value>>>;
 ```
 
-- The central data bus. Every node reads from and writes to it.
-- Cloning a `SharedStore` shares the **same** underlying data (cheap `Arc` clone).
-- All values are `serde_json::Value` — flexible but runtime-cast.
-- **Reserved key:** `"action"` — used exclusively by `Flow` for routing. Do not use it for application data.
+- Single data bus shared across all nodes in a flow.
+- Nodes hold the lock only as long as needed; never hold across `.await`.
 
-### Node & NodeResult
+### Node Types
 
 ```rust
 // Infallible node
-pub trait Node<I, O>: Send + Sync + DynClone { ... }
-pub type SimpleNode = Box<dyn Node<SharedStore, SharedStore>>;
+pub type SimpleNode = Arc<dyn Fn(SharedStore) -> BoxFuture<'static, SharedStore> + Send + Sync>;
 
 // Fallible node
-pub trait NodeResult<I, O>: Send + Sync + DynClone { ... }
-pub type ResultNode = Box<dyn NodeResult<SharedStore, SharedStore>>;
+pub type ResultNode = Arc<dyn Fn(SharedStore) -> BoxFuture<'static, Result<SharedStore, AgentFlowError>> + Send + Sync>;
 ```
 
 **Factory functions:**
 
 | Function | Returns | Use when |
 |----------|---------|----------|
-| `create_node(closure)` | `SimpleNode` | Node cannot fail |
-| `create_result_node(closure)` | `ResultNode` | Node may return `AgentFlowError` |
-| `create_retry_node(prep, exec, post, retries, wait, fallback)` | `SimpleNode` | Need prep/exec/post separation with built-in retry |
-| `create_batch_node(closure)` | `SimpleNode` | Processing a list of items |
+| `create_node(f)` | `SimpleNode` | Node should never fail |
+| `create_result_node(f)` | `ResultNode` | Node may return an error |
+| `create_diff_node(f)` | `SimpleNode` | Node reads a snapshot, returns a `StateDiff`; framework applies under one write lock — structurally deadlock-free |
 
-### Flow
-
-`Flow` is the directed-graph executor. It routes between nodes by reading the `"action"` key from the store after each node executes.
-
-```mermaid
-graph TD
-    NodeA[node_a] -->|next| NodeB[node_b]
-    NodeB -->|done| NodeC[node_c]
-    NodeB -->|retry| NodeA
-```
-
-**Key methods:**
-
-| Method | Description |
-|--------|-------------|
-| `Flow::new()` | Create an empty flow |
-| `.add_node(name, node)` | Register a node |
-| `.add_edge(from, action, to)` | Add a directed edge |
-| `.with_start(name)` | Override the start node (default: first added) |
-| `.with_max_steps(n)` | Cap total execution steps (cycle prevention) |
-| `.run(store)` | Execute; returns store (silently stops at limit) |
-| `.run_safe(store)` | Execute; returns `Result<SharedStore, AgentFlowError>` |
-
-**Routing contract:**
-1. Node writes `"action"` key into the store (e.g. `"next"`, `"retry"`, `"done"`).
-2. `Flow` acquires a write lock, reads, and **removes** `"action"` to prevent state leaks, looks up the matching outgoing edge, and advances.
-3. If no `"action"` key is written, or no matching edge exists, execution halts.
-
-### TypedStore & TypedFlow
-
-For strict state machines where you want compile-time guarantees, `TypedFlow` provides cycle prevention and precise telemetry:
+### StateDiff
 
 ```rust
-#[derive(Clone)]
-struct MyState { step: u32, result: String }
+pub struct StateDiff {
+    pub inserts: HashMap<String, Value>,
+    pub removals: HashSet<String>,
+}
+```
 
-let store = TypedStore::new(MyState { step: 0, result: String::new() });
+`create_diff_node` passes a **read-only snapshot** (`HashMap<String, Value>`) to the closure, with **no lock held** while the async work runs. The framework applies the returned diff in a single brief write lock after the future resolves.
 
-let mut flow = TypedFlow::new().with_max_steps(10);
-flow.add_node("a", create_typed_node(|store: TypedStore<MyState>| async move {
-    store.inner.write().await.step += 1;
-    store
-}));
-flow.add_transition("a", |state| {
-    if state.step < 3 { Some("a".into()) } else { None }
+```rust
+let node = create_diff_node(|snapshot| async move {
+    let prompt = snapshot.get("prompt").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let reply  = call_llm(&prompt).await;
+    let mut diff = StateDiff::new();
+    diff.insert("response", serde_json::json!(reply));
+    diff
 });
 ```
 
-| | `SharedStore` / `Flow` | `TypedStore<T>` / `TypedFlow<T>` |
-|---|---|---|
-| Key access | Runtime JSON cast | Compile-time struct fields |
-| Routing | `"action"` key in store | Closure over `&T` |
-| Flexibility | High | Low — fixed struct shape |
-| Best for | Dynamic / ad-hoc pipelines | Strict state machines |
+### Flow
 
-### Store (ergonomic wrapper)
-
-`Store` wraps a `SharedStore` with typed `get<T>`, `set`, and `require` helpers — eliminating manual `serde_json` casts in node bodies:
+`Flow` is a labeled-edge directed graph of `SimpleNode`s.
 
 ```rust
-// Wrap an existing SharedStore
-let mut s = Store::from_shared(store.clone());
-s.set("count", 42u32);
-let n: u32 = s.require("count").await?;
+let mut flow = Flow::new();
+flow.add_node("a", node_a);
+flow.add_node("b", node_b);
+flow.add_edge("a", "go_b", "b");   // routes when store["action"] == "go_b"
+flow.add_edge("a", "default", "b"); // fallback edge
 
-// Or start fresh
-let mut s = Store::new();
-s.set("key", "value");
+let result = flow.run(store).await;
 ```
 
-### Batch & ParallelBatch
+**Routing:** After every node executes, `Flow` removes `store["action"]` under a write lock and finds the matching outgoing edge. No matching edge → flow stops naturally. Consuming the key prevents state leaks across transitions.
 
-| Type | Behaviour |
-|------|-----------|
-| `Batch` | Runs a `SimpleNode` over each item in a `Vec<SharedStore>` **sequentially** |
-| `ParallelBatch` | Runs the same node over all items **concurrently** via `join_all` |
+**Cycle prevention:** `.with_max_steps(n)` aborts after `n` node executions.
+
+### TypedFlow\<T\>
+
+Compile-time typed alternative to `Flow`. State is a plain Rust struct — no `HashMap` key lookups.
+
+```rust
+let mut flow: TypedFlow<MyState> = TypedFlow::new("draft");
+flow.add_node("draft",   create_typed_node(|mut s: MyState| async move { ... s }));
+flow.add_transition("draft", |s| if s.approved { None } else { Some("revise".into()) });
+flow.add_node("revise",  create_typed_node(|mut s: MyState| async move { ... s }));
+flow.add_transition("revise", |_| Some("draft".into()));
+flow.with_max_steps(20);
+
+let final_state = flow.run(initial_state).await;
+```
+
+### ParallelFlow
+
+Fan-out N independent `Flow`s concurrently, fan-in with a configurable merge function.
+
+```rust
+let pf = ParallelFlow::new(vec![branch_a, branch_b])
+    .with_merge(|_initial, results| Box::pin(async move {
+        // merge branch stores into one
+    }));
+
+let result = pf.run(initial_store).await;
+```
+
+- Each branch receives a **snapshot clone** of the initial store — full isolation.
+- Default merge: last-writer-wins union across branches (in order).
+- Branches run via `futures::future::join_all` — no Tokio task spawning overhead.
+
+### Batch / ParallelBatch
+
+```rust
+// Sequential — one item at a time
+let batch = Batch::new(node, items);
+let result = batch.run(store).await;
+
+// Concurrent — all items at once
+let par = ParallelBatch::new(node, items);
+let result = par.run(store).await;
+```
 
 ### AgentFlowError
 
 ```rust
 pub enum AgentFlowError {
-    NotFound(String),           // Missing key or resource
-    Timeout(String),            // Transient — retried by Agent
-    NodeFailure(String),        // Fatal — retries skipped
-    ExecutionLimitExceeded(String), // Flow max_steps hit
-    TypeMismatch(String),       // Wrong value type in store
-    Custom(String),             // Catch-all
+    NotFound(String),
+    NodeFailure(String),
+    Timeout(String),
+    IoError(String),
+    SerdeError(String),
+    TypeMismatch(String),
+    Custom(String),
 }
 ```
 
@@ -207,182 +196,218 @@ Implements `std::error::Error`, `Display`, `From<std::io::Error>`, `From<serde_j
 
 ### Agent
 
-An autonomous decision-making unit wrapping any `Node` with:
-- **Retry logic** — configurable `max_retries` and `wait_duration`.
-- **Transient vs fatal error classification** — `Timeout` is retried; `NodeFailure` is not.
-- **Result-aware variant** — `decide_result` for `ResultNode`-backed agents.
-
-```mermaid
-flowchart LR
-    Start([Input]) --> AgentNode[Agent Node]
-    AgentNode -->|Success| End([Output])
-    AgentNode -->|Transient Error| Retry{Retry limit reached?}
-    Retry -->|No| Wait[Delay]
-    Wait --> AgentNode
-    Retry -->|Yes| Error([Fatal Error])
-```
+Retry-aware wrapper around any `SimpleNode` or `ResultNode`.
 
 ```rust
-let agent = Agent::with_retry(my_node, 3, Duration::from_millis(500));
+let agent = Agent::with_retry(node, 3, 500); // 3 attempts, 500 ms delay
 
-let result = agent.decide_shared(store).await;         // infallible
-let result = agent.decide_result(store, &r_node).await; // Result<SharedStore, AgentFlowError>
+// HashMap ergonomic API
+let result: HashMap<String, Value> = agent.decide(input_map).await?;
+
+// SharedStore API
+let store_out = agent.decide_shared(store).await;
+
+// Fallible — distinguishes Timeout (retryable) from fatal errors
+let result = agent.decide_result(store).await?;
 ```
 
 ### Workflow
 
-A sequential pipeline of nodes. Each node executes in order; the store threads through all of them.
-
-```mermaid
-flowchart LR
-    Step1[Node A] --> Step2[Node B]
-    Step2 --> Step3[Node C]
-```
+Linear sequence of named steps sharing a `SharedStore`.
 
 ```rust
 let mut wf = Workflow::new();
-wf.add_step(node_a);
-wf.add_step(node_b);
-let result = wf.execute_shared(store).await;
+wf.add_step("step1", node_a);
+wf.add_step("step2", node_b);
+let result = wf.execute(store).await;
 ```
 
 ### MultiAgent
 
-Runs multiple agents **concurrently** using `join_all` and merges results.
+Runs multiple agents concurrently against the same store.
 
-```mermaid
-flowchart TD
-    Input([Input Store]) --> Split{Parallel Dispatch}
-    Split --> Agent1[Agent 1]
-    Split --> Agent2[Agent 2]
-    Split --> Agent3[Agent 3]
-    Agent1 --> Merge[Merge Strategy]
-    Agent2 --> Merge
-    Agent3 --> Merge
-    Merge --> Output([Output Store])
+```rust
+let mut ma = MultiAgent::new();
+ma.add_agent(agent1);
+ma.add_agent(agent2);
+let result = ma.run(store).await;
 ```
 
-| Strategy | Isolation | Output keys |
-|----------|-----------|-------------|
-| `MergeStrategy::SharedStore` | None — shared `Arc` | As written by each agent |
-| `MergeStrategy::Namespaced` | Snapshot per agent | `"agent_0.key"`, `"agent_1.key"`, … |
-| `MergeStrategy::Custom(fn)` | Snapshot per agent | Determined by your merge function |
+Merge strategies: `Shared` (one store), `Namespaced` (prefixed keys), `Custom(fn)`.
 
 ### MapReduce
 
-Scatter-gather over a dataset:
-1. **Map** — runs a node over each item, producing per-item results.
-2. **Reduce** — aggregates all results into a single store.
-
-```mermaid
-flowchart TD
-    Input([Input Array]) --> Map[Mapper Node]
-    Map -->|Item 1| M1[Mapped 1]
-    Map -->|Item 2| M2[Mapped 2]
-    Map -->|Item N| MN[Mapped N]
-    M1 --> Reduce[Reducer Node]
-    M2 --> Reduce
-    MN --> Reduce
-    Reduce --> Output([Aggregated Store])
-```
-
-### StructuredOutput
-
-Validates and extracts a typed `T: DeserializeOwned` from the store under a given key, returning `Result<T, AgentFlowError>`.
-
-```mermaid
-flowchart LR
-    Input([Store]) --> LLM[LLM Node]
-    LLM -->|JSON Response| Extractor[Extractor]
-    Extractor -->|Valid| Success([Typed Struct])
-    Extractor -->|Invalid| Error([Error])
+```rust
+let mr = MapReduce::new(mapper_agent, reducer_agent);
+let result = mr.run(items).await;
 ```
 
 ### Rag
 
-Retrieval-augmented generation bridge. Connects a vector store (Qdrant, behind the `rag` feature flag) to a query node, injecting retrieved context into the store before the LLM call.
+```rust
+let rag = Rag::new(retriever_node, generator_node);
+let result = rag.call(store).await;
+```
 
-```mermaid
-flowchart LR
-    Query([Query]) --> Retriever[Retriever Node]
-    Retriever -->|Context| Generator[Generator Node]
-    Generator --> Response([Response])
+### RpiWorkflow
+
+Research → Plan → Implement → Verify, with loopback on failure.
+
+```rust
+let rpi = RpiWorkflow::new(research, plan, implement, verify);
+let result = rpi.run(store).await;
+```
+
+---
+
+## Utils
+
+### create_tool_node
+
+Run a shell command as a `SimpleNode`.
+
+```rust
+let node = create_tool_node("sysinfo", "uname", vec!["-a".into()]);
+```
+
+Writes `{name}_output`, `{name}_exit_code`, and on timeout `{name}_error` into the store.
+
+### ToolRegistry
+
+Explicit allowlist that prevents LLM-generated tool names from invoking arbitrary binaries.
+
+```rust
+let mut registry = ToolRegistry::new();
+registry.register("sysinfo",  "uname",    vec!["-a".into()], None);
+registry.register("hostname", "hostname", vec![],            None);
+
+let node = registry.create_node("sysinfo").unwrap();
+// registry.create_node("rm") → Err(NotFound) — not in the list
+```
+
+`registry.into_arc()` for cheap sharing across tasks.
+
+### create_corrective_retry_node
+
+Self-correction loop: on each failure the error message is written into the store under a configurable key so the next LLM call can read it and adjust.
+
+```rust
+let node = create_corrective_retry_node(
+    |store| async move {
+        let hint = store.read().await
+            .get("last_error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        // ... build prompt incorporating `hint`, call LLM, validate ...
+        Err(AgentFlowError::NodeFailure("invalid JSON".into()))
+    },
+    3,            // max attempts
+    500,          // ms between retries
+    "last_error", // store key for error feedback
+);
+```
+
+---
+
+## Skills
+
+*(Requires `--features skills`)*
+
+Define agents declaratively in YAML — persona, instructions, and tools — without recompiling Rust.
+
+```yaml
+---
+name: document_processor
+version: 1.0.0
+description: "Process and convert documents"
+tools:
+  - name: "convert_text"
+    description: "Convert text documents using pandoc"
+    command: "pandoc"
+    args: ["{{input_file}}", "-o", "{{output_file}}"]
+```
+
+```rust
+let skill = Skill::from_file("examples/SKILL_DOC_PROCESS.md")?;
+let tool_node = create_tool_node(&skill.tools[0].name, &skill.tools[0].command, skill.tools[0].args.clone());
+```
+
+---
+
+## MCP
+
+*(Requires `--features mcp`)*
+
+Exposes AgentFlow pipelines as an MCP (Model Context Protocol) server over `stdio`. Allows IDEs like Cursor or Claude Desktop to call your agents as tools.
+
+```
+Client (Claude Desktop / Cursor)
+    ↕  stdio JSON-RPC
+AgentFlow MCP Server
+    ↕  translate request/response
+AgentFlow Flow / Workflow
+    ↕
+SharedStore
 ```
 
 ---
 
 ## Routing Model
 
-```
-┌──────────┐   write "action" = "next"   ┌──────────┐
-│  Node A  │ ──────────────────────────► │  Flow    │ ──► Node B
-└──────────┘                             │  reads   │
-                                         │ "action" │
-                                         └──────────┘
-```
+`Flow` uses a labeled-edge graph. The `"action"` key in `SharedStore` is the routing signal:
 
-**Rules:**
-1. `"action"` is the **only** reserved routing key. Never use it for application data.
-2. Nodes that want to halt the flow simply do **not** write `"action"`.
-3. `Flow` removes `"action"` from the store after reading it — nodes never see a stale value.
-4. Unrecognised `"action"` values (no matching edge) also halt execution silently.
+1. Node executes and (optionally) writes `store["action"] = "some_label"`.
+2. `Flow` acquires a **write lock**, removes `"action"`, and looks up the matching outgoing edge.
+3. If found — run next node. If not found — stop.
+
+The key is **consumed** (removed) on every transition. This means:
+- A node that does not set `"action"` will follow the `"default"` edge if one exists, or stop.
+- There is no state leak from one transition to the next.
+- Routing cycles are only possible if a node explicitly sets `"action"` to loop back.
+
+`TypedFlow` uses transition closures `|&State| -> Option<String>` instead of the store key.
 
 ---
 
 ## Feature Flags
 
 | Flag | Enables | Extra deps |
-|------|---------|-----------|
-| *(default)* | `core`, `patterns`, `utils` | `tokio`, `serde_json`, `futures`, `tracing` |
-| `skills` | YAML skill parser, `RpiWorkflow` | `serde_yaml` |
-| `mcp` | MCP stdio server (implies `skills`) | `rmcp` |
-| `rag` | Qdrant-backed retrieval | `qdrant-client`, `fastembed` |
-| `repl` | Interactive REPL / TUI | `inquire` |
-
-Activate in `Cargo.toml`:
-```toml
-[dependencies]
-agentflow = { version = "0.2", features = ["skills", "repl"] }
-```
+|------|---------|------------|
+| `skills` | YAML skill parser (`src/skills/`) | `serde_yaml` |
+| `mcp` | MCP stdio server (`src/mcp/`) | implies `skills` |
+| `repl` | Interactive REPL helper | `inquire` |
+| `rag` | Qdrant vector store integration | `qdrant-client` |
 
 ---
 
-## Concurrency & Safety Rules
+## Concurrency Rules
 
-1. **Never hold a write guard across an `.await` point** — this deadlocks under Tokio's cooperative scheduler.
-   ```rust
-   // ✅ correct
-   { store.write().await.insert("k".into(), json!("v")); }
-   some_async_fn().await;
-
-   // ❌ deadlock
-   let mut g = store.write().await;
-   some_async_fn().await;  // g still held!
-   g.insert(...);
-   ```
-2. **Use distinct output keys in `MultiAgent::SharedStore` strategy** — all agents share one `Arc`; concurrent writes to the same key produce a last-write-wins race.
-3. **Prefer `Namespaced` or `Custom` strategies** when agents produce overlapping keys.
-4. **`Flow::with_max_steps`** — always set this in production to prevent runaway loops.
+| Rule | Rationale |
+|------|-----------|
+| Never hold `SharedStore` lock across `.await` | Prevents deadlocks in async context |
+| Use `create_diff_node` for lock-sensitive paths | Reads snapshot without lock; applies diff in one write lock after async work |
+| `ParallelFlow` branches are fully isolated | Each branch gets a snapshot clone; no shared mutable state during execution |
+| `ParallelBatch` items are independent | Items must not depend on each other's output |
 
 ---
 
-## How Pieces Snap Together
+## Composability Diagram
 
+```mermaid
+graph TD
+    SS[(SharedStore)] --> Node
+    Node --> Flow
+    Node --> TF[TypedFlow]
+    Node --> PF[ParallelFlow]
+    Flow --> Agent
+    TF --> Agent
+    PF --> Agent
+    Agent --> Workflow
+    Agent --> MultiAgent
+    Agent --> MapReduce
+    Agent --> Rag
+    Agent --> RpiWorkflow
+    Workflow --> MCP
+    MultiAgent --> MCP
 ```
-User Request
-     │
-     ▼
-  Flow (graph executor)
-     │
-     ├──► SimpleNode (create_node)         ← lightweight, single responsibility
-     ├──► Agent (Node + retry)             ← for LLM calls that may fail/retry
-     ├──► Workflow (sequential pipeline)   ← ordered steps with shared context
-     ├──► MultiAgent (concurrent fan-out)  ← parallel specialised agents
-     └──► MapReduce (scatter/gather)       ← batch processing
-               │
-               ▼
-          SharedStore ◄──────────────────── all nodes read/write here
-          (or TypedStore<T>)
-```
-
-A `Flow` is the top-level orchestrator. Inside each node you can embed any pattern — a node can itself run a `Workflow`, invoke a `MultiAgent`, or call another `Flow`. There is no depth limit.

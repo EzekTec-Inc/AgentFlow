@@ -279,3 +279,28 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** The flow would either immediately terminate after tool execution due to a missing edge, or infinitely loop hitting max steps because it couldn't parse the final answer correctly.
 - **New behavior:** The flow correctly transitions from the `tool` node back to the `reasoner` node using the `default` edge, and the parser successfully extracts the final `ANSWER:`, breaking the loop and delivering the real tool output.
 - **Rollback instructions:** Revert this commit using `git revert HEAD`.
+
+## [2026-03-13T03:45:00Z] Implement 4 code-review recommendations
+- **Summary of change:** Added four new capabilities to the framework.
+- **Files modified:**
+  - `src/core/node.rs` — `StateDiff` struct + `create_diff_node` factory
+  - `src/core/parallel.rs` — `ParallelFlow` (fan-out / fan-in)
+  - `src/utils/tool.rs` — `ToolRegistry` allowlist + `create_corrective_retry_node`
+  - `src/core/mod.rs`, `src/lib.rs` — exports for new types
+  - `examples/plan_and_execute.rs` — updated to use `create_corrective_retry_node`
+- **Details:**
+  1. **`StateDiff` / `create_diff_node`** — Nodes receive a read-only snapshot of the store, run async work with no lock held, then return a `StateDiff` (inserts + removals). The framework applies the diff under one brief write lock. Deadlocks from holding a lock across `.await` are structurally impossible.
+  2. **`ToolRegistry`** — Explicit allowlist mapping names to (command, args, timeout). `create_node(name)` returns `Err(NotFound)` for any name not in the list. LLM-generated tool names can never escape the sandbox. `into_arc()` for cheap cross-task sharing.
+  3. **`create_corrective_retry_node`** — Replaces blind retry with a self-correction loop: on each failure the error message is written into the store under a configurable key so the next LLM call can read and adjust.
+  4. **`ParallelFlow`** — `ParallelFlow::new(branches)` runs N independent `Flow`s concurrently via `futures::future::join_all`. Each branch receives a snapshot clone (full isolation). `with_merge(fn)` for custom merge; default is last-writer-wins union.
+- **Previous behavior:** No fan-out, no allowlisted tools, no deadlock-safe diff node, no self-correcting retry.
+- **New behavior:** All four capabilities available and exported from `prelude`. All 20 unit + integration tests pass; 0 clippy warnings.
+- **Rollback instructions:** Revert this commit using `git revert HEAD`.
+
+## [2026-03-13T10:05:00Z] Update all documentation
+- **Summary of change:** Rewrote `README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, and all 20 `examples/*.md` files to reflect the latest framework state including `StateDiff`, `create_diff_node`, `ToolRegistry`, `create_corrective_retry_node`, and `ParallelFlow`.
+- **Files modified:** `README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md`, `PLAN.md`, `examples/*.md` (all 20)
+- **Exact reason:** The four new capabilities added in the previous commit were not reflected in any documentation. Additionally, `CONTRIBUTING.md` and example MDs had stale references and missing sections.
+- **Previous behavior:** Docs described v0.2.0 without the new primitives.
+- **New behavior:** All docs accurately describe the current codebase including the four new capabilities.
+- **Rollback instructions:** Revert this commit using `git revert HEAD`.

@@ -1,29 +1,38 @@
 # Example: reflection
 
-*This documentation is automatically generated from the source code.*
+*This documentation is generated from the source code.*
 
 # Example: reflection.rs
 
-Real-world Reflection pattern. A Generator LLM writes a draft; a Critic LLM
-reviews it and either approves or sends it back with specific feedback. The
-loop continues until the Critic approves or max_steps is reached.
+**Purpose:**
+Demonstrates a self-improvement loop where a generator LLM produces a draft, a critic LLM evaluates it, and the generator revises until the critic is satisfied or a maximum number of iterations is reached.
 
-Domain: technical blog post paragraph about Rust's ownership model.
+**How it works:**
+1. **Generator node** — Produces an initial draft (or revision incorporating critic feedback). Reads `critique` from the store if present.
+2. **Critic node** — Evaluates the draft and writes `critique` and `approved` to the store.
+3. **Router node** — Reads `approved`; sets `action = "done"` or `action = "revise"`.
+4. **Flow** — routes `generate → critic → router → revise → generate` until `approved == true` or `max_steps` is reached.
 
-Requires: OPENAI_API_KEY
-Run with: cargo run --example reflection
+**How to adapt:**
+- Replace the critic with a rule-based validator for structured output verification.
+- Add a `create_diff_node` in the generator for lock-safe store access during the LLM call.
+- Use `create_corrective_retry_node` if the generator itself can fail transiently.
+
+**Requires:** `OPENAI_API_KEY`
+**Run with:** `cargo run --example reflection`
+
+---
 
 ## Implementation Architecture
 
 ```mermaid
 graph TD
-    Input[(Initial Prompt)] --> Draft[Draft Node<br>Initial Output]
-    Draft --> Critique[Critique Node<br>LLM evaluates draft]
-    Critique -->|Needs Improvement| Revise[Revise Node<br>Fix issues]
-    Revise --> Critique
-    Critique -->|Good Enough| End[(Final Polish)]
-    
-    classDef reflect fill:#fbe9e7,stroke:#d84315,stroke-width:2px;
-    class Draft,Critique,Revise reflect;
-```
+    Task[(Task)] --> Gen[Generator Node<br>draft / revision]
+    Gen --> Critic[Critic Node<br>evaluate + critique]
+    Critic --> Router[Router Node<br>approved?]
+    Router -->|action:revise| Gen
+    Router -->|action:done| Output[(Final Output)]
 
+    classDef reflect fill:#fce4ec,stroke:#880e4f,stroke-width:2px;
+    class Gen,Critic,Router reflect;
+```

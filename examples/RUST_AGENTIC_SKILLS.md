@@ -1,28 +1,59 @@
 # Example: rust_agentic_skills
 
-*This documentation is automatically generated from the source code.*
+*This documentation is generated from the source code.*
 
 # Example: rust_agentic_skills.rs
 
-Real-world RPI workflow driven by a Skill file and real LLM calls. The skill
-defines the agent's persona and instructions. Each RPI phase (Research, Plan,
-Implement, Verify) calls the LLM with that context.
+**Purpose:**
+Demonstrates AgentFlow's `skills` feature — YAML-defined agent personas, instructions, and tool bindings loaded at runtime without recompiling.
 
-Domain: generating a Rust CLI tool from a spec using the Skill system.
+**How it works:**
+1. Loads skill definitions from `examples/SKILL_*.md` files (YAML front matter).
+2. Parses each skill into a `Skill` struct (name, description, tools, persona, instructions).
+3. Builds `create_tool_node` instances from the parsed tool definitions.
+4. Runs a `Workflow` that sequences the skill nodes.
+5. Prints all store values at the end.
 
-Requires: OPENAI_API_KEY, `skills` feature
-Run with: cargo run --example rust-agentic-skills --features skills
+**How to adapt:**
+- Add a new skill by creating a new `SKILL_*.md` file — no Rust changes needed.
+- Combine with an LLM agent node to let the LLM dynamically select which skill to invoke.
+- Use `ToolRegistry` instead of raw `create_tool_node` for allowlist enforcement.
+
+**Requires:** `OPENAI_API_KEY`, `--features skills`
+**Run with:** `cargo run --example rust-agentic-skills --features skills`
+
+---
+
+## Skill YAML Schema
+
+```yaml
+---
+name: my_skill
+version: 1.0.0
+description: "What this skill does"
+persona: "You are a ..."
+tools:
+  - name: "tool_name"
+    description: "What the tool does"
+    command: "binary"
+    args: ["--flag", "{{store_key}}"]
+    timeout_secs: 30
+```
+
+---
 
 ## Implementation Architecture
 
 ```mermaid
 graph TD
-    YAML[YAML Skill Definitions] -->|Parsed via features=skills| Parser[Skill Parser]
-    Parser --> Nodes[Agent Nodes & Tools]
-    Nodes --> Flow[AgentFlow Execution]
-    Flow --> End[(Result)]
-    
-    classDef skill fill:#fff8e1,stroke:#ff8f00,stroke-width:2px;
-    class YAML,Parser skill;
-```
+    Files[SKILL_*.md files] -->|YAML parse| Skills[Skill Structs]
+    Skills --> Nodes[Tool Nodes<br>create_tool_node]
+    Nodes --> Workflow[Workflow]
+    Workflow --> S1[Skill Node 1]
+    S1 --> S2[Skill Node 2]
+    S2 --> SN[Skill Node N]
+    SN --> Output[(SharedStore)]
 
+    classDef skill fill:#fff8e1,stroke:#ff8f00,stroke-width:2px;
+    class Files,Skills skill;
+```

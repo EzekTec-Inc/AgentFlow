@@ -1,38 +1,36 @@
 # Example: rag
 
-*This documentation is automatically generated from the source code.*
+*This documentation is generated from the source code.*
 
 # Example: rag.rs
 
 **Purpose:**
-Implements a real-world Retrieval-Augmented Generation (RAG) pipeline using rig for both retrieval and generation.
+Demonstrates a Retrieval-Augmented Generation (RAG) pipeline — retrieve relevant context, then generate a grounded response — using AgentFlow's `Rag` pattern.
 
+**How it works:**
+1. **Retriever node** — Searches a document store (mock or Qdrant with `--features rag`) for context relevant to the query. Writes retrieved chunks to `context` in the store.
+2. **Generator node** — LLM receives the original query plus retrieved context and produces the final answer.
+3. `Rag::new(retriever, generator)` wires the two nodes together; `rag.call(store)` runs them in sequence.
+
+**How to adapt:**
+- Swap the mock retriever for a real Qdrant vector store by enabling `--features rag`.
+- Add a re-ranking node between retriever and generator for improved relevance.
+- Combine with `MapReduce` to run RAG over a batch of queries.
+
+**Requires:** `OPENAI_API_KEY`
+**Run with:** `cargo run --example rag`
+
+---
 
 ## Implementation Architecture
 
 ```mermaid
-graph LR
-    Query[(Query)] --> Retriever[Retriever Node<br>Vector DB / Search]
-    Retriever --> Context[Retrieved Context]
-    Context --> Generator[Generator Node<br>LLM Prompt]
-    Query --> Generator
-    Generator --> Response[(Answer)]
-    
-    classDef rag fill:#e0f2f1,stroke:#00695c,stroke-width:2px;
+graph TD
+    Query[(Query<br>SharedStore)] --> Retriever[Retriever Node<br>vector search]
+    Retriever -->|writes context| Store[(SharedStore<br>context + query)]
+    Store --> Generator[Generator Node<br>LLM grounded answer]
+    Generator --> Answer[(Answer<br>SharedStore)]
+
+    classDef rag fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px;
     class Retriever,Generator rag;
-```
-
-**How it works:**
-- The retriever agent uses an LLM to synthesize or retrieve context for a user query.
-- The generator agent uses an LLM to generate an answer based on the context.
-- The flow and all prompts/results are displayed to the user.
-
-**How to adapt:**
-- Replace the retrieval/generation logic with your own (e.g., use a real search API for retrieval).
-- Use this pattern for any RAG use case: question answering, summarization, etc.
-
-**Example:**
-```rust
-let rag = Rag::new(retriever, generator);
-let result = rag.call(store).await;
 ```

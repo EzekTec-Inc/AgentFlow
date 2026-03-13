@@ -1,40 +1,47 @@
 # Example: workflow
 
-*This documentation is automatically generated from the source code.*
+*This documentation is generated from the source code.*
 
 # Example: workflow.rs
 
 **Purpose:**
-Demonstrates a real-world, multi-step workflow for a Land Registry Agency, with Human-in-the-Loop (HITL) at each step.
+Demonstrates `Workflow` — a linear sequence of named steps sharing a `SharedStore`, ideal for predictable pipelines where there is no branching.
 
+**How it works:**
+1. Create a `Workflow`.
+2. Add named steps with `wf.add_step("name", node)` in execution order.
+3. Call `wf.execute(store).await` — steps run sequentially, each reading and writing the same store.
+4. Inspect the final store for all step outputs.
+
+**How to adapt:**
+- Use `Workflow` over `Flow` when there is no conditional routing — it is simpler and easier to debug.
+- Nest workflows: call `inner_wf.execute(store)` inside a node of an outer `Workflow`.
+- Add a `create_diff_node` step for any LLM call to avoid holding the store lock across `.await`.
+
+**Requires:** `OPENAI_API_KEY`
+**Run with:** `cargo run --example workflow`
+
+---
 
 ## Implementation Architecture
 
 ```mermaid
-graph LR
-    Input[(Initial Store)] --> Step1[Workflow Node 1]
-    Step1 -->|action| Step2[Workflow Node 2]
-    Step2 -->|action| Step3[Workflow Node 3]
-    Step3 --> Output[(Final Store)]
-    
-    classDef wf fill:#e0f7fa,stroke:#006064,stroke-width:2px;
+graph TD
+    Input[(SharedStore)] --> Step1[Step 1<br>fetch data]
+    Step1 --> Step2[Step 2<br>LLM summarise]
+    Step2 --> Step3[Step 3<br>format output]
+    Step3 --> Output[(Output<br>SharedStore)]
+
+    classDef wf fill:#e0f2f1,stroke:#004d40,stroke-width:2px;
     class Step1,Step2,Step3 wf;
 ```
 
-**How it works:**
-- Each step is an LLM agent: title search, title issuance, legal review.
-- After each step, the result is shown to the user, who can approve, request revision, restart, or cancel.
-- The workflow advances or repeats based on user input.
-
-**How to adapt:**
-- Replace the steps with your own business process (e.g., document review, multi-stage approval).
-- Use the HITL pattern to add user oversight to any workflow.
-
 **Example:**
 ```rust
-let mut workflow = Workflow::new();
-workflow.add_step("step1", ...);
-workflow.add_step("step2", ...);
-workflow.connect("step1", "step2");
-let result = workflow.execute(store).await;
+let mut wf = Workflow::new();
+wf.add_step("fetch",    node_fetch_data);
+wf.add_step("summarise", node_summarise);
+wf.add_step("format",   node_format_output);
+
+let result = wf.execute(store).await;
 ```
