@@ -22,9 +22,11 @@ tracing = "0.1.41"
 serde_yaml = { version = "0.9.34", optional = true }
 inquire = { version = "0.6", optional = true }
 qdrant-client = { version = "1.15.0", optional = true }
+anyhow = "1.0.102"
 
 [dev-dependencies]
-rig = { package = "rig-core", version = "0.16.0" }
+rig = { package = "rig-core", version = "0.16.0", features = ["rmcp"] }
+rmcp = { version = "0.3.2", features = ["transport-child-process"] }
 dotenvy = "0.15.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 toml = "1.0"
@@ -118,3 +120,13 @@ path = "examples/typed_flow.rs"
 [[example]]
 name = "dynamic-orchestrator"
 path = "examples/dynamic_orchestrator.rs"
+
+[[example]]
+name = "mcp-server"
+path = "examples/mcp_server.rs"
+required-features = ["mcp", "skills"]
+
+[[example]]
+name = "mcp-client"
+path = "examples/mcp_client.rs"
+required-features = ["mcp", "skills"]
