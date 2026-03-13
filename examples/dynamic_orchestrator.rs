@@ -61,14 +61,14 @@ output_key  = "research_result"
 [[agent]]
 name        = "coder"
 provider    = "openai"
-model       = "gpt-4.1-mini"
+model       = "gpt-4.1"
 preamble    = "You are a senior Rust developer. Produce only clean, compilable Rust code."
 output_key  = "code_result"
 
 [[agent]]
 name        = "reviewer"
 provider    = "openai"
-model       = "gpt-4.1-mini"
+model       = "gpt-4.1"
 preamble    = "You are a thorough code reviewer. Be concise; bullet-point your findings."
 output_key  = "review_result"
 "#;

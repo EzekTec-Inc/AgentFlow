@@ -261,3 +261,12 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** Several examples still referenced the old name "PocketFlow".
 - **New behavior:** All examples now correctly reference "AgentFlow".
 - **Rollback instructions:** Revert this commit using `git revert HEAD` to restore the references to PocketFlow.
+
+## [2026-03-13T00:10:00Z] Update DYNAMIC_ORCHESTRATOR.md to accurately capture implementation
+- **Summary of change:** Corrected a few discrepancies in `DYNAMIC_ORCHESTRATOR.md` to perfectly match the `dynamic_orchestrator.rs` implementation.
+- **Files modified:** 
+  - `examples/DYNAMIC_ORCHESTRATOR.md`
+- **Exact reason:** The user requested to investigate and ensure the documentation accurately captures the functionalities, processes, and architecture of the Rust source file. 
+- **Previous behavior:** Markdown had incorrect model names (`gpt-4.1-mini`), a wrongly typed file extension in references (`DYNAMIC-ORCHESTRATOR.md`), and potentially outdated descriptions.
+- **New behavior:** Documentation now correctly references `gpt-4o-mini`, standardises the filename as `DYNAMIC_ORCHESTRATOR.md`, and accurately reflects the `dynamic_orchestrator.rs` functionalities (which were mostly already perfectly described).
+- **Rollback instructions:** Revert this commit using `git revert HEAD` to restore the outdated references in the documentation.

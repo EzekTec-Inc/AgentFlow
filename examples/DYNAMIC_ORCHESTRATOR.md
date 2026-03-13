@@ -49,7 +49,7 @@ OPENAI_API_KEY=sk-... cargo run --example dynamic-orchestrator
 examples/
 ├── dynamic_orchestrator.rs   ← orchestrator source
 ├── agents.toml               ← agent registry config (auto-created if absent)
-└── DYNAMIC-ORCHESTRATOR.md   ← this document
+├── DYNAMIC_ORCHESTRATOR.md   ← this document
 ```
 
 ---
@@ -174,7 +174,7 @@ The TOML file is **auto-created** with defaults on first run if it does not exis
 [[agent]]
 name        = "researcher"         # unique identifier used by the planner
 provider    = "openai"             # "openai" | "gemini"
-model       = "gpt-4.1-mini"       # any model supported by the provider
+model       = "gpt-4o-mini"        # any model supported by the provider
 preamble    = "You are a ..."      # system prompt injected at agent spin-up
 output_key  = "research_result"    # SharedStore key where the result is written
 ```
@@ -183,9 +183,9 @@ output_key  = "research_result"    # SharedStore key where the result is written
 
 | name | provider | model | output_key |
 |---|---|---|---|
-| `researcher` | openai | gpt-4.1-mini | `research_result` |
-| `coder` | openai | gpt-4.1-mini | `code_result` |
-| `reviewer` | openai | gpt-4.1-mini | `review_result` |
+| `researcher` | openai | gpt-4o-mini | `research_result` |
+| `coder` | openai | gpt-4o-mini | `code_result` |
+| `reviewer` | openai | gpt-4o-mini | `review_result` |
 
 ### Customising without recompiling
 
@@ -226,7 +226,7 @@ output_key  = "research_result"    # SharedStore key where the result is written
 # Remove all artefacts introduced by this example
 rm examples/dynamic_orchestrator.rs
 rm examples/agents.toml
-rm examples/DYNAMIC-ORCHESTRATOR.md
+rm examples/DYNAMIC_ORCHESTRATOR.md
 # Revert Cargo.toml: remove toml = "1.0" from [dev-dependencies]
 #                    remove [[example]] name = "dynamic-orchestrator"
 git checkout Cargo.toml
