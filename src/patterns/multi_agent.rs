@@ -2,6 +2,7 @@ use crate::core::node::{Node, SharedStore};
 use futures::future::join_all;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 use tracing::{debug, info, instrument};
 
 /// Controls how results from parallel agents are merged into the final store.
@@ -21,9 +22,15 @@ pub enum MergeStrategy {
     ///
     /// Use this when agents would otherwise overwrite each other's keys.
     Namespaced,
-    /// Each agent runs against its own snapshot. The user-supplied function
+    /// Each agent runs against its own snapshot. The user-supplied closure
     /// receives all per-agent result stores and returns the merged store.
-    Custom(fn(Vec<SharedStore>) -> SharedStore),
+    ///
+    /// Wrap your closure in [`Arc::new`] when constructing this variant:
+    ///
+    /// ```rust,ignore
+    /// MergeStrategy::Custom(Arc::new(|stores| { /* ... */ }))
+    /// ```
+    Custom(Arc<dyn Fn(Vec<SharedStore>) -> SharedStore + Send + Sync>),
 }
 
 /// Runs multiple agents concurrently and merges their results.
@@ -39,7 +46,7 @@ pub enum MergeStrategy {
 /// |---|---|---|
 /// | `SharedStore` | none — shared `Arc` | as written by each agent |
 /// | `Namespaced` | snapshot per agent | `"agent_0.key"`, `"agent_1.key"`, … |
-/// | `Custom(fn)` | snapshot per agent | determined by your function |
+/// | `Custom(Arc<dyn Fn>)` | snapshot per agent | determined by your closure |
 ///
 /// # Example
 ///
@@ -105,7 +112,7 @@ impl MultiAgent {
         match &self.strategy {
             MergeStrategy::SharedStore => self.run_shared(store).await,
             MergeStrategy::Namespaced => self.run_namespaced(store).await,
-            MergeStrategy::Custom(merge_fn) => self.run_custom(store, *merge_fn).await,
+            MergeStrategy::Custom(merge_fn) => self.run_custom(store, merge_fn.clone()).await,
         }
     }
 
@@ -150,12 +157,12 @@ impl MultiAgent {
         store
     }
 
-    /// Custom strategy — snapshot per agent, user-supplied merge function.
+    /// Custom strategy — snapshot per agent, user-supplied merge closure.
     #[instrument(name = "multi_agent.run_custom", skip(self, store, merge_fn), fields(agent_count = self.agents.len()))]
     async fn run_custom(
         &self,
         store: SharedStore,
-        merge_fn: fn(Vec<SharedStore>) -> SharedStore,
+        merge_fn: Arc<dyn Fn(Vec<SharedStore>) -> SharedStore + Send + Sync>,
     ) -> SharedStore {
         debug!(
             agent_count = self.agents.len(),

@@ -253,6 +253,23 @@ agentflow/
 
 ---
 
+## MSRV
+
+The minimum supported Rust version is **1.75**.
+
+This version is required because 1.75 stabilised two language features that
+AgentFlow relies on throughout its trait and type system:
+
+| Feature | RFC / Tracking issue | Stabilised |
+|---|---|---|
+| Async fn in traits (AFIT) | [RFC 3185](https://github.com/rust-lang/rfcs/pull/3185) | 1.75 |
+| Return-position `impl Trait` in traits (RPITIT) | [RFC 3425](https://github.com/rust-lang/rfcs/pull/3425) | 1.75 |
+
+The MSRV is enforced via `rust-version` in `Cargo.toml`. If you need to
+support an older toolchain, pin an earlier release of the crate.
+
+---
+
 ## License
 
 Licensed under the GNU Affero General Public License v3.0 ([AGPL-3.0](LICENSE)).

@@ -78,8 +78,12 @@ impl RpiWorkflow {
     /// findings into the store (e.g. `store["research"]`).
     ///
     /// Default outgoing edge: `"default"` → `"plan"`.
+    ///
+    /// This method explicitly sets `"research"` as the flow start node so the
+    /// workflow is correct regardless of builder call order.
     pub fn with_research(mut self, node: SimpleNode) -> Self {
         self.flow.add_node("research", node);
+        self.flow.set_start("research");
         self.flow.add_edge("research", "default", "plan");
         self
     }
@@ -139,9 +143,9 @@ impl RpiWorkflow {
 
     /// Execute the RPI workflow starting from the `"research"` phase.
     ///
-    /// The start node is always the first node registered — as long as you use
-    /// the standard builder order (`with_research` first), `"research"` will
-    /// always run first.
+    /// `"research"` is always the start node — it is pinned explicitly by
+    /// [`with_research`](Self::with_research), so builder call order has no
+    /// effect on which phase runs first.
     #[instrument(name = "rpi.run", skip(self, store))]
     pub async fn run(&self, store: SharedStore) -> SharedStore {
         let t = Instant::now();

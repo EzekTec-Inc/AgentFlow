@@ -140,9 +140,10 @@ impl ParallelFlow {
             .iter()
             .enumerate()
             .map(|(i, flow)| {
-                let snapshot = clone_store_snapshot(&initial_store);
+                let store_ref = initial_store.clone(); // clone Arc only to move into async block
                 let flow = flow.clone(); // Flow: Clone
                 async move {
+                    let snapshot = clone_store_snapshot(&store_ref).await;
                     debug!(branch = i, "ParallelFlow branch started");
                     let result = flow.run(snapshot).await;
                     debug!(branch = i, "ParallelFlow branch finished");
@@ -165,18 +166,14 @@ impl ParallelFlow {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/// Clone the contents of `store` into a new, independent `SharedStore`.
+/// Deep-copy the contents of `store` into a new, independent `SharedStore`.
 ///
-/// This is a **deep copy** of the key-value data; the two stores do not share
-/// the underlying `RwLock`.
-fn clone_store_snapshot(store: &SharedStore) -> SharedStore {
-    // We need a synchronous snapshot.  Use `try_read` in a spin — the store
-    // should never be write-locked at the call site (between nodes).
-    // In practice `blocking_read` is not available on tokio's RwLock in async
-    // context, so we clone the Arc and let `join_all` do the async part.
-    // The actual snapshot is taken inside the spawned future before the branch
-    // flow executes.
-    store.clone()
+/// Acquires a read lock, clones the underlying `HashMap`, then wraps it in a
+/// fresh `Arc<RwLock<...>>`.  The two stores share **no** state after this call.
+async fn clone_store_snapshot(store: &SharedStore) -> SharedStore {
+    let guard = store.read().await;
+    let data = guard.clone();
+    Arc::new(tokio::sync::RwLock::new(data))
 }
 
 /// Default merge: union all branch stores into the initial store (last-writer-wins).

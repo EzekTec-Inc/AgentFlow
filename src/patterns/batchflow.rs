@@ -30,7 +30,7 @@ impl BatchFlow {
             {
                 let mut store = shared.write().await;
                 for (k, v) in wf.params.iter() {
-                    store.entry(k.clone()).or_insert(v.clone());
+                    store.insert(k.clone(), v.clone());
                 }
             }
             let _ = wf.call(shared.clone()).await;

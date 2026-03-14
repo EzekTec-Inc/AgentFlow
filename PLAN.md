@@ -317,3 +317,405 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 * **Previous behavior:** `mcp_server.rs` used `rmcp` macros and routing. `mcp_client.rs` manually managed child processes and relied heavily on the `rig` LLM framework to execute tools, ignoring the `SharedStore` and graph architecture.
 * **New behavior:** `mcp_server.rs` boots a native `McpServer` exposing a parsed `Skill`. `mcp_client.rs` builds a `Flow` that uses `create_tool_node` to interact with the server, wrapping it in an `Agent` for fault tolerance, and cleanly returning results via the `SharedStore`.
 * **Rollback:** `git checkout HEAD^ -- examples/mcp_server.rs examples/mcp_client.rs`
+
+---
+
+## Code Review Resolution Plan
+
+**Timestamp:** 2026-03-14T16:28:41Z
+**Source:** Deep code review of all `src/` files against compiled codebase (`cargo check` clean).
+**Purpose:** Implementation plan for resolving all 17 issues from the Summary Table.
+
+> Pre-verification notes (findings from source inspection before writing this plan):
+> - H3 (`Flow` missing `Default`) — **already resolved**: `impl Default for Flow` exists at `flow.rs:250`. Closed.
+> - M2 (`ParallelBatch` unbounded concurrency) — **already resolved**: `ParallelBatch` has `concurrency_limit` defaulting to 10 with `with_concurrency_limit` override. Closed.
+> - Confirmed open issues: C1, C2, H1, H2, H4, H5, M1, M3, M4, M5, L1, L2, L3, L4, L5.
+
+---
+
+### Phase 1 — Critical (Address First, Correctness-Breaking)
+
+#### [C1] `clone_store_snapshot` clones `Arc`, not data (`src/core/parallel.rs`)
+
+- **Problem:** `clone_store_snapshot` returns `store.clone()`, which clones the `Arc<RwLock<...>>` — all branches share the same underlying `RwLock`. The promised isolation between branches is absent. Branch writes pollute each other and the final merge is non-deterministic.
+- **Fix:** Inside `parallel.rs`, replace `store.clone()` in the map closure with a real deep snapshot: acquire a read lock, clone the `HashMap`, then wrap in a new `Arc::new(RwLock::new(...))`. The `clone_store_snapshot` helper must become `async` or its logic must be inlined directly into the `async move` block.
+- **Files:** `src/core/parallel.rs`
+- **Backward compatibility:** No public API change. `ParallelFlow::run` signature unchanged.
+- **Rollback:** Revert `clone_store_snapshot` body to `store.clone()`.
+
+#### [C2] `BatchFlow` uses `or_insert` — subsequent batch params silently dropped (`src/patterns/batchflow.rs`)
+
+- **Problem:** `store.entry(k).or_insert(v)` at line 33 only inserts if the key is absent. Every batch after the first runs with the first batch's params for any key that collides.
+- **Fix:** Replace `store.entry(k.clone()).or_insert(v.clone())` with `store.insert(k.clone(), v.clone())`.
+- **Files:** `src/patterns/batchflow.rs`
+- **Backward compatibility:** Behavior change — intentional bug fix. Any caller relying on "first value wins" was relying on the bug.
+- **Rollback:** Revert the single `insert` call back to `entry().or_insert()`.
+
+---
+
+### Phase 2 — High (API Correctness and Consistency)
+
+#### [H1] `MergeStrategy::Custom` uses bare `fn` pointer (`src/patterns/multi_agent.rs`)
+
+- **Problem:** `Custom(fn(Vec<SharedStore>) -> SharedStore)` cannot capture environment. Closures with captures produce opaque compiler errors for users.
+- **Fix:** Change the variant to `Custom(Arc<dyn Fn(Vec<SharedStore>) -> SharedStore + Send + Sync>)`. Update `run_custom` at line 158 to accept `Arc<dyn Fn(...)>`. Update the match arm at line 108 to pass `merge_fn.clone()`.
+- **Breaking change:** Yes — `MergeStrategy::Custom(my_fn)` call sites must wrap with `Arc::new(...)`. Document in changelog.
+- **Files:** `src/patterns/multi_agent.rs`
+- **Rollback:** Revert `Custom` variant and `run_custom` signature.
+
+#### [H2] `Agent::decide_result` takes external `node` param instead of `self.node` (`src/patterns/agent.rs`)
+
+- **Problem:** `decide_result` takes `node: &R` as a separate parameter rather than using the wrapped `self.node`. There is no constructor that places a `ResultNode` inside `Agent`, forcing callers to hold a redundant external reference.
+- **Fix:** Add a `run_result` method on `Agent<N>` where `N: NodeResult<SharedStore, SharedStore>` that calls `self.node` directly without an external parameter. Do **not** remove or change the existing `decide_result` (backward compatibility preserved).
+- **Files:** `src/patterns/agent.rs`
+- **Rollback:** Remove the new `run_result` method.
+
+#### [H4] `Store::require_*` return `Result<_, String>` instead of `Result<_, AgentFlowError>` (`src/core/store.rs`)
+
+- **Problem:** `require`, `require_string`, `require_i64`, `require_f64`, `require_bool` return `Result<_, String>`, breaking the uniform error contract. Callers cannot use `?` to propagate into `AgentFlowError`.
+- **Fix:** Change return types to `Result<_, AgentFlowError>`. Map the internal error string to the appropriate `AgentFlowError` variant (`MissingKey` or `Custom` — inspect `error.rs` to confirm available variants before implementing).
+- **Breaking change:** Yes — return type changes. Callers pattern-matching on `String` must update. Document in changelog.
+- **Files:** `src/core/store.rs`
+- **Rollback:** Revert return types to `Result<_, String>`.
+
+#### [H5] `RpiWorkflow` start node is order-dependent (`src/patterns/rpi.rs`)
+
+- **Problem:** `Flow::add_node` sets start node to the first node added. `RpiWorkflow::with_research` relies on being called first with no enforcement. Calling `with_plan` first silently sets `"plan"` as start.
+- **Fix:** In `RpiWorkflow::with_research`, after `self.flow.add_node("research", node)`, explicitly force the start node to `"research"`. If `Flow` does not expose a `set_start` method, add `pub fn set_start(&mut self, name: &str)` to `Flow` (one-line addition to `flow.rs`).
+- **Files:** `src/patterns/rpi.rs`, possibly `src/core/flow.rs` (one-line addition only if `set_start` is absent)
+- **Rollback:** Remove the `set_start` call in `with_research`; remove `set_start` from `Flow` if added.
+
+---
+
+### Phase 3 — Medium (Correctness Gaps and Missing Signals)
+
+#### [M1] `TypedFlow::run` silently swallows `max_steps` breach — no store signal (`src/core/typed_flow.rs`)
+
+- **Problem:** `TypedFlow::run` only emits a `warn!` log on breach. `Flow::run` writes `"error"` into the store so callers can detect truncation programmatically. `TypedFlow` has no equivalent.
+- **Fix:** After the `warn!` at line 115 in `TypedFlow::run`, write a sentinel into `TypedStore` (e.g., a boolean field `_flow_truncated: bool` on the generic `T` is impractical — use `store.set_extra("_flow_truncated", true)` if TypedStore has an escape hatch, or document that `run_safe` is the correct API for detecting truncation). Inspect `TypedStore` for an appropriate set method before implementing.
+- **Files:** `src/core/typed_flow.rs`
+- **Rollback:** Remove the sentinel write.
+
+#### [M3] Implicit `"default"` action coupling between `Workflow` and `Flow` is undocumented (`src/patterns/workflow.rs`, `src/core/flow.rs`)
+
+- **Problem:** `Workflow::connect` registers `"default"` edges. `Flow::run` falls back to `"default"` when `"action"` key is absent. A node forgetting to set `"action"` silently advances instead of halting.
+- **Fix:** Documentation-only. Add a `# Warning` section to `Workflow::connect` doc-comment explaining the fallback. Add a note to `Flow::add_edge` doc-comment explaining the `"default"` fallback behavior.
+- **Files:** `src/patterns/workflow.rs`, `src/core/flow.rs`
+- **Rollback:** Remove the added doc comments.
+
+#### [M4] `TypedFlow`, `TypedStore`, `RpiWorkflow`, `BatchFlow` missing from `prelude` and flat exports (`src/lib.rs`)
+
+- **Problem:** These four public types are re-exported at `src/core/mod.rs` and `src/patterns/mod.rs` but absent from the `prelude` module and top-level flat exports in `src/lib.rs`.
+- **Fix:** Add to both the `prelude` module and top-level flat exports in `src/lib.rs`:
+  ```
+  pub use crate::core::typed_flow::{TypedFlow, TypedNode, SimpleTypedNode, create_typed_node};
+  pub use crate::core::typed_store::TypedStore;
+  pub use crate::patterns::batchflow::BatchFlow;
+  pub use crate::patterns::rpi::RpiWorkflow;
+  ```
+  Note: `RpiWorkflow` is behind the `skills` feature gate — wrap its export in `#[cfg(feature = "skills")]`.
+- **Files:** `src/lib.rs`
+- **Rollback:** Remove the four added `pub use` lines from both sections.
+
+#### [M5] `Store::set_f64` silently discards NaN/infinite — return type prevents detection (`src/core/store.rs`)
+
+- **Problem:** `set_f64` returns `()` and silently drops writes for NaN/infinite. The existing doc-comment mentions it but a return-type change would break the API.
+- **Fix:** Documentation-only (no API break without explicit approval). Expand the doc-comment to explicitly recommend callers validate `value.is_finite()` before calling and to explain that `JSON` does not support NaN/infinite.
+- **Files:** `src/core/store.rs`
+- **Rollback:** N/A (doc-only).
+
+---
+
+### Phase 4 — Low (Polish, Ergonomics, Documentation)
+
+#### [L1] No `From<anyhow::Error>` despite `anyhow` being a direct dep (`src/core/error.rs`)
+
+- **Problem:** No `From<anyhow::Error> for AgentFlowError` exists. Users mapping `anyhow` errors need boilerplate.
+- **Fix:** Add `impl From<anyhow::Error> for AgentFlowError` using `AgentFlowError::Custom(e.to_string())` (or nearest appropriate variant — confirm variant name in `error.rs` before implementing). No new dependency required.
+- **Files:** `src/core/error.rs`
+- **Rollback:** Remove the `From` impl.
+
+#### [L2] `Flow::with_start` provides no additional value over `add_node` (`src/core/flow.rs`)
+
+- **Problem:** `with_start` constructs a new `Flow` and calls `add_node` — it sets no edges and is equivalent to `Flow::new()` + `add_node`. The name implies more than it does.
+- **Fix:** Documentation-only. Add a note to `with_start`'s doc-comment clarifying it is a shorthand constructor equivalent to `Flow::new()` + `add_node`, and that it does not set edges.
+- **Files:** `src/core/flow.rs`
+- **Rollback:** Remove added doc note.
+
+#### [L3] `BatchFlow` not re-exported from `lib.rs`
+
+- **Covered by M4.** No separate action needed.
+
+#### [L4] `dyn_clone` `'static` constraint limits composability with borrowed data (`src/core/node.rs`)
+
+- **Problem:** `DynClone` requires `'static`. Users with closures capturing references will encounter opaque errors.
+- **Fix:** Documentation-only. Add a `# Note` to the `Node` trait doc-comment warning that all implementations must be `'static` due to `DynClone`, and that closures capturing non-`'static` references will not compile.
+- **Files:** `src/core/node.rs`
+- **Rollback:** Remove added doc note.
+
+#### [L5] MSRV 1.75 rationale undocumented (`Cargo.toml`)
+
+- **Problem:** `rust-version = "1.75"` has no comment explaining the minimum.
+- **Fix:** Add inline comment above `rust-version` in `Cargo.toml`: `# 1.75: async fn in traits (RFC 3185) stabilised`.
+- **Files:** `Cargo.toml`
+- **Rollback:** Remove the comment.
+
+---
+
+### Execution Order Summary
+
+| Priority | ID | File(s) | Type | Effort |
+|---|---|---|---|---|
+| 1 | C1 | `parallel.rs` | Bug fix | Small |
+| 2 | C2 | `batchflow.rs` | Bug fix | 1 line |
+| 3 | H1 | `multi_agent.rs` | Breaking API fix | Small |
+| 4 | H4 | `store.rs` | Breaking API fix | Small |
+| 5 | H5 | `rpi.rs`, `flow.rs` | Bug fix | Small |
+| 6 | H2 | `agent.rs` | Additive API | Small |
+| 7 | M1 | `typed_flow.rs` | Signal addition | Small |
+| 8 | M3 | `workflow.rs`, `flow.rs` | Doc only | Trivial |
+| 9 | M4 | `lib.rs` | Export addition | Trivial |
+| 10 | M5 | `store.rs` | Doc only | Trivial |
+| 11 | L1 | `error.rs` | Additive impl | Trivial |
+| 12 | L2 | `flow.rs` | Doc only | Trivial |
+| 13 | L3 | *(covered by M4)* | — | — |
+| 14 | L4 | `node.rs` | Doc only | Trivial |
+| 15 | L5 | `Cargo.toml` | Doc only | Trivial |
+
+**Breaking changes requiring changelog entry before merge:** H1 (`MergeStrategy::Custom` wraps `fn` → `Arc<dyn Fn>`), H4 (`Store::require_*` return type `String` → `AgentFlowError`).
+**No new dependencies required for any item.**
+
+---
+
+## [C1] Fix `clone_store_snapshot` — deep copy instead of Arc clone
+
+**Timestamp:** 2026-03-14T16:34:00Z
+**Files modified:** `src/core/parallel.rs`
+**Reason:** `clone_store_snapshot` was returning `store.clone()` which only clones the `Arc`, leaving all branches sharing the same `RwLock`. Branch writes were polluting each other, breaking the documented isolation guarantee.
+
+**Previous behavior:** All `ParallelFlow` branches shared the same underlying `RwLock<HashMap>`. Writes in one branch were visible to others; merge results were non-deterministic.
+
+**New behavior:** `clone_store_snapshot` is now `async`. It acquires a read lock, clones the `HashMap`, and wraps it in a fresh `Arc<RwLock<...>>`. Each branch gets a fully independent store. The call site in `run` clones the `Arc` (cheap) to move into the `async move` block, then `await`s the snapshot before the branch executes.
+
+**Rollback:** Revert `clone_store_snapshot` to `fn clone_store_snapshot(store: &SharedStore) -> SharedStore { store.clone() }` and revert the `map` closure to use the old synchronous call without `await`.
+
+---
+
+## [C2] Fix `BatchFlow::run` — `or_insert` → `insert`
+
+**Timestamp:** 2026-03-14T16:35:00Z
+**Files modified:** `src/patterns/batchflow.rs`
+**Reason:** `or_insert` silently skips writing a param key when it already exists in the store from a previous batch item. Each batch item must unconditionally write its own params so the workflow sees the correct values for that iteration.
+
+**Previous behavior:** `store.entry(k.clone()).or_insert(v.clone())` — first batch item's param values were permanently sticky; all subsequent batch items were silently using stale values.
+
+**New behavior:** `store.insert(k.clone(), v.clone())` — each batch item overwrites the store with its own params before `wf.call()` is invoked.
+
+**Rollback:** Change `store.insert(k.clone(), v.clone())` back to `store.entry(k.clone()).or_insert(v.clone())`.
+
+---
+
+## [H1] `MergeStrategy::Custom` — fn pointer → `Arc<dyn Fn>`
+
+**Timestamp:** 2026-03-14T16:37:00Z
+**Files modified:** `src/patterns/multi_agent.rs`
+**Reason:** `Custom(fn(Vec<SharedStore>) -> SharedStore)` only accepts bare function pointers. Closures that capture environment produce opaque compiler errors.
+
+**Changes:**
+- Added `use std::sync::Arc;`
+- `Custom` variant: `fn(...)` → `Arc<dyn Fn(Vec<SharedStore>) -> SharedStore + Send + Sync>`
+- `run_custom` param type updated to match
+- Match arm: `*merge_fn` (copy) → `merge_fn.clone()` (clone the `Arc`)
+- Doc-comments updated; table entry and `Custom` doc updated with `Arc::new(...)` usage example
+
+**Breaking change:** Yes — `MergeStrategy::Custom(my_fn)` call sites must wrap with `Arc::new(my_fn)`.
+
+**Rollback:** Revert the four changes above; remove `use std::sync::Arc` if it was not already present.
+
+---
+
+## [H2] Add `Agent::run_result` — self.node variant of `decide_result`
+
+**Timestamp:** 2026-03-14T16:40:00Z
+**Files modified:** `src/patterns/agent.rs`
+**Reason:** `decide_result` requires callers to pass an external `node` ref that duplicates `self.node`. `run_result` uses `self.node` directly, matching the ergonomics of `decide_shared`.
+
+**Changes:**
+- Added `run_result(&self, input: SharedStore) -> Result<SharedStore, AgentFlowError>` where `N: NodeResult<SharedStore, SharedStore> + Clone`
+- Logic is identical to `decide_result` but calls `self.node.call(...)` instead of the external `node` param
+- `decide_result` is retained unchanged for backwards compatibility
+- Struct-level doc table and link list updated to include `run_result`
+
+**Breaking change:** No — additive only.
+**Rollback:** Remove the `run_result` method block and revert the doc edits.
+
+---
+
+## [H4] `Store::require_*` — `Result<_, String>` → `Result<_, AgentFlowError>`
+
+**Timestamp:** 2026-03-14T16:43:00Z
+**Files modified:** `src/core/store.rs`
+**Reason:** Uniform error contract — callers can now use `?` to propagate into `AgentFlowError` without a manual `.map_err`.
+
+**Changes:**
+- Added `use crate::core::error::AgentFlowError`
+- `require` → `Result<Value, AgentFlowError>` (missing key: `NotFound`)
+- `require_string` → `Result<String, AgentFlowError>` (missing: `NotFound`, wrong type: `TypeMismatch`)
+- `require_i64` → `Result<i64, AgentFlowError>` (same pattern)
+- `require_f64` → `Result<f64, AgentFlowError>` (same pattern)
+- `require_bool` → `Result<bool, AgentFlowError>` (same pattern)
+- Each method now holds the read lock for both the existence check and type check (single lock acquisition, correct error variant)
+- Struct-level doc comment updated
+
+**Breaking change:** Yes — callers pattern-matching on `String` must update to match `AgentFlowError::NotFound(_)` / `AgentFlowError::TypeMismatch(_)`.
+
+**Rollback:** Revert return types to `Result<_, String>`, remove the `use` import.
+
+---
+
+## [H5] `RpiWorkflow` start node — explicit pin via `Flow::set_start`
+
+**Timestamp:** 2026-03-14T16:46:00Z
+**Files modified:** `src/core/flow.rs`, `src/patterns/rpi.rs`
+**Reason:** `RpiWorkflow::with_research` relied on being called first so `add_node` would implicitly set it as start. Calling `with_plan` first silently made `"plan"` the start node.
+
+**Changes:**
+- `src/core/flow.rs`: Added `pub fn set_start(&mut self, name: &str)` — overwrites `self.start_node` unconditionally.
+- `src/patterns/rpi.rs` (`with_research`): calls `self.flow.set_start("research")` after `add_node`, guaranteeing `"research"` is always start regardless of builder order.
+- `src/patterns/rpi.rs` (`run`): updated doc-comment to remove the misleading "first node registered" note.
+
+**Breaking change:** No — additive only (`set_start` is new public API; `RpiWorkflow` behaviour is now stricter/correct).
+**Rollback:** Remove `set_start` from `flow.rs`; remove the `self.flow.set_start("research")` call in `with_research`.
+
+---
+
+## [M1] `TypedFlow::run` silent `max_steps` breach — add `limit_exceeded` sentinel
+
+**Timestamp:** 2026-03-14T16:50:00Z
+**Files modified:** `src/core/typed_store.rs`, `src/core/typed_flow.rs`
+**Reason:** `TypedFlow::run` broke out of the loop silently when `max_steps` was reached. Callers had no way to distinguish a completed flow from a truncated one without switching to `run_safe`.
+
+**Changes:**
+- `TypedStore<T>`: added `pub limit_exceeded: bool` field (default `false`); added `pub fn limit_exceeded(&self) -> bool` accessor; updated `Clone` impl to copy the flag; updated struct doc-comment with `# Truncation flag` section.
+- `TypedFlow::run`: sets `store.limit_exceeded = true` before `break` when `steps >= limit`.
+- `TypedFlow::run` doc-comment updated to describe the flag and point to `run_safe`.
+- New test `test_typed_flow_run_sets_limit_exceeded_flag` added (asserts flag is `true` and count is `3` after `max_steps = 3` on an infinite loop).
+
+**Breaking change:** `TypedStore` struct gains a new public field — code constructing `TypedStore` with struct literal syntax will need to add `limit_exceeded: false`. Use of `TypedStore::new(…)` is unaffected.
+**Rollback:** Remove `limit_exceeded` field and accessor from `TypedStore`; remove `store.limit_exceeded = true` from `TypedFlow::run`; remove the new test.
+
+---
+
+## [M3] `"default"` action fallback coupling — documentation added
+
+**Timestamp:** 2026-03-14T16:55:00Z
+**Files modified:** `src/core/flow.rs`, `src/patterns/workflow.rs`
+**Reason:** `Flow::run` silently falls back to `"default"` when `store["action"]` is absent. Neither `Flow::add_edge` nor `Workflow::connect` warned callers, so a node forgetting to set `"action"` would silently advance rather than halt.
+
+**Changes (doc-only, no logic):**
+- `src/core/flow.rs` (`add_edge`): expanded doc-comment with `# Warning — silent advance on missing "action"` section explaining the `"default"` fallback and how to prevent silent advances.
+- `src/patterns/workflow.rs` (`connect`): expanded doc-comment to explain that `connect` registers a `"default"` edge and therefore inherits the same silent-advance risk; added `# Warning` section with mitigation guidance.
+
+**Breaking change:** None (doc-only).
+**Rollback:** Revert the two doc-comment expansions.
+
+---
+
+## [M4] `TypedFlow`, `TypedStore`, `RpiWorkflow`, `BatchFlow` added to `prelude` and flat exports
+
+**Timestamp:** 2026-03-14T17:10:00Z
+**Files modified:** `src/lib.rs`
+**Reason:** Four public types were reachable only via full module paths (`crate::core::typed_flow::TypedFlow`, etc.). Users doing `use agentflow::prelude::*` or `use agentflow::TypedFlow` would get a compile error.
+
+**Changes:**
+- `prelude` block: added `TypedFlow`, `TypedNode`, `SimpleTypedNode`, `TransitionFn`, `create_typed_node` from `core::typed_flow`; `TypedStore` from `core::typed_store`; `BatchFlow` from `patterns::batchflow`; `RpiWorkflow` from `patterns::rpi`.
+- Flat namespace: identical additions mirroring prelude.
+- Crate-level layout doc-comment updated: `TypedStore`, `TypedFlow` now use short intra-doc links; `BatchFlow` and `RpiWorkflow` listed under `patterns`; `skills` feature description corrected (no longer claims `RpiWorkflow` is feature-gated — it is always compiled).
+
+**Note on `RpiWorkflow` feature gate:** PLAN.md previously noted `RpiWorkflow` requires `#[cfg(feature = "skills")]`. Inspection of `src/patterns/rpi.rs` and `src/patterns/mod.rs` shows no such gate — the struct is unconditionally compiled. The `skills` feature only adds `serde_yaml`. No gate was added.
+
+**Breaking change:** None (additive only).
+**Rollback:** Remove the eight new `pub use` lines from both `prelude` and the flat namespace block; revert the layout doc-comment.
+
+---
+
+## [M5] `Store::set_f64` silent NaN/infinite discard — expanded doc-comment
+
+**Timestamp:** 2026-03-14T17:20:00Z
+**Files modified:** `src/core/store.rs`
+**Reason:** `set_f64` had a one-line comment noting the silent-drop behaviour. Callers had no guidance on how to guard against it or why it happens (JSON has no NaN/∞ representation).
+
+**Change (doc-only, no API break):**
+Replaced the one-line `/// Insert a float value. Silently does nothing if value is NaN or infinite.` with a full section that:
+- Cites RFC 8259 §6 (JSON number spec has no NaN/∞)
+- Names `serde_json::Number::from_f64` → `None` as the underlying mechanism
+- Calls out that the **key is neither inserted nor updated** (important: not cleared either)
+- Provides a concrete `if v.is_finite()` guard pattern in a `rust,no_run` doctest
+- Suggests two alternatives when a sentinel is needed: omit the key and treat `get_f64() == None` as the signal, or store as a `"NaN"` string
+
+**Breaking change:** None.
+**Rollback:** Revert the doc-comment to the single-line version.
+
+---
+
+## [L1] `From<anyhow::Error>` for `AgentFlowError` added
+
+**Timestamp:** 2026-03-14T17:30:00Z
+**Files modified:** `src/core/error.rs`
+**Reason:** `anyhow` was already a direct dependency but no `From` impl existed. Callers mapping `anyhow` errors into `AgentFlowError` required manual `.to_string()` boilerplate.
+
+**Change:**
+Added `impl From<anyhow::Error> for AgentFlowError` converting into `AgentFlowError::Custom`. Uses `format!("Error: {}", error)` which preserves the full `anyhow` error chain via its `Display` impl (`"outer: inner: cause"`). Pattern is consistent with existing `From<std::io::Error>` and `From<serde_json::Error>` impls in the same file.
+
+Doc-comment explains chain preservation and includes a live doctest (`cargo test --doc` passes — test id `core::error::AgentFlowError::from (line 80)`).
+
+**Breaking change:** None (additive impl).
+**Rollback:** Remove the `impl From<anyhow::Error>` block.
+
+---
+
+## [L2] `Flow::with_start` doc clarification
+
+**Timestamp:** 2026-03-14T17:40:00Z
+**Files modified:** `src/core/flow.rs`
+**Reason:** The old one-liner "Create a flow and immediately register node as both the first node and the start node" implied more than the method does. Callers were unclear it does NOT add edges and is purely a shorthand constructor.
+
+**Change (doc-only, no API break):**
+Replaced one-line comment with full section that:
+- States equivalence to `Flow::new()` + `add_node()` with a live doctest
+- Explicitly calls out what it does NOT do (no edges, no ResultNode support)
+- Points callers toward `Flow::new()` + `add_node()` + `add_edge()` + `set_start()` for complex graphs
+
+**Doctest fix:** Initial doctest used wrong `create_node` closure return type (`String` instead of `SharedStore`). Corrected to `|store: SharedStore| async move { store }`.
+
+**Breaking change:** None.
+
+---
+
+## [L4] `Node` / `NodeResult` `'static` constraint documented
+
+**Timestamp:** 2026-03-14T17:50:00Z
+**Files modified:** `src/core/node.rs`
+**Reason:** `dyn_clone::clone_trait_object!` silently adds a `'static` bound. Users closures capturing non-`'static` references get opaque compiler errors with no hint about the root cause.
+
+**Change (doc-only, no API break):**
+- `Node` trait: added `# \`'static\` requirement` section explaining the `dyn_clone` source of the bound, a `compile_fail` doctest demonstrating the exact error, and three concrete workarounds (clone, Arc, move).
+- `NodeResult` trait: added a parallel note cross-referencing `Node`'s section.
+
+**Doctest:** `compile_fail` test passes (confirms the constraint is real and the example fails correctly). Total doc-tests: 27/27.
+
+**Breaking change:** None.
+
+---
+
+## [L5] MSRV 1.75 rationale documented
+
+**Timestamp:** 2026-03-14T18:00:00Z
+**Files modified:** `Cargo.toml`, `README.md`
+**Reason:** `rust-version = "1.75"` had no explanation. Maintainers and contributors had no way to know *why* that floor exists or what would break if it were lowered.
+
+**Changes (doc-only, no API break):**
+- `Cargo.toml`: inline comment above `rust-version` naming both stabilised features (AFIT RFC 3185, RPITIT RFC 3425).
+- `README.md`: new `## MSRV` section (before `## License`) with a table linking each feature to its RFC and stabilisation version, plus a note about the `rust-version` enforcement and how to pin an older release.
+
+**Breaking change:** None.

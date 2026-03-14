@@ -67,3 +67,24 @@ impl From<serde_json::Error> for AgentFlowError {
         AgentFlowError::Custom(format!("JSON Error: {}", error))
     }
 }
+
+impl From<anyhow::Error> for AgentFlowError {
+    /// Convert an [`anyhow::Error`] into [`AgentFlowError::Custom`].
+    ///
+    /// This preserves the full error chain via [`anyhow::Error`]'s `Display`
+    /// impl (which prints the chain as `"outer: inner: cause"`), so no
+    /// diagnostic information is lost.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use agentflow::core::error::AgentFlowError;
+    /// use anyhow::anyhow;
+    ///
+    /// let err: AgentFlowError = anyhow!("something went wrong").into();
+    /// assert!(err.to_string().contains("something went wrong"));
+    /// ```
+    fn from(error: anyhow::Error) -> Self {
+        AgentFlowError::Custom(format!("Error: {}", error))
+    }
+}

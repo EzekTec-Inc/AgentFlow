@@ -53,6 +53,28 @@ pub type SharedStore = Arc<tokio::sync::RwLock<HashMap<String, Value>>>;
 ///
 /// The trait is object-safe and can be stored as `Box<dyn Node<I, O>>`.
 /// [`DynClone`] is a supertrait so boxed nodes can be cloned.
+///
+/// # `'static` requirement
+///
+/// [`dyn_clone::clone_trait_object!`] expands the blanket `Clone` impl with a
+/// `'static` bound, so **every concrete type that implements `Node` must be
+/// `'static`**. This means closures (or structs) that capture references with
+/// a non-`'static` lifetime will not compile.
+///
+/// ```rust,compile_fail
+/// use agentflow::core::node::create_node;
+///
+/// let data = String::from("hello");
+/// let _node = create_node(|store| {
+///     let r = &data; // ← captures a non-`'static` reference
+///     async move { store }
+/// });
+/// ```
+///
+/// **Workarounds:**
+/// - Clone the data into the closure: `let data = data.clone();`
+/// - Wrap shared data in `Arc` and move the `Arc` into the closure.
+/// - Move owned values directly (the `move` keyword on the outer closure).
 pub trait Node<I, O>: Send + Sync + DynClone {
     /// Execute the node with `input`, returning a future that resolves to `O`.
     fn call(&self, input: I) -> Pin<Box<dyn Future<Output = O> + Send + '_>>;
@@ -66,6 +88,12 @@ dyn_clone::clone_trait_object!(<I, O> Node<I, O>);
 /// [`Agent::decide_result`] for automatic retry on [`AgentFlowError::Timeout`].
 ///
 /// Create instances with [`create_result_node`].
+///
+/// # `'static` requirement
+///
+/// Same constraint as [`Node`]: every concrete implementation must be
+/// `'static`. Closures capturing non-`'static` references will not compile.
+/// See [`Node`]'s documentation for workarounds.
 ///
 /// [`Agent::decide_result`]: crate::patterns::agent::Agent::decide_result
 pub trait NodeResult<I, O>: Send + Sync + DynClone {

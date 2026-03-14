@@ -19,7 +19,8 @@ use tracing::{debug, info, instrument, warn};
 /// |---|---|---|---|
 /// | [`decide_shared`] | [`Node`] | `"error"` key in store | any `"error"` key |
 /// | [`decide`] | [`Node`] | `"error"` key | any `"error"` key (plain `HashMap` convenience wrapper) |
-/// | [`decide_result`] | [`NodeResult`] | `Err(AgentFlowError)` | `Timeout` only |
+/// | [`run_result`] | [`NodeResult`] (uses `self.node`) | `Err(AgentFlowError)` | `Timeout` only |
+/// | [`decide_result`] | [`NodeResult`] (external `node` ref) | `Err(AgentFlowError)` | `Timeout` only |
 ///
 /// # Example
 ///
@@ -43,6 +44,7 @@ use tracing::{debug, info, instrument, warn};
 ///
 /// [`decide_shared`]: Agent::decide_shared
 /// [`decide`]: Agent::decide
+/// [`run_result`]: Agent::run_result
 /// [`decide_result`]: Agent::decide_result
 #[derive(Clone)]
 pub struct Agent<N> {
@@ -132,6 +134,58 @@ impl<N> Agent<N> {
         let result_store = self.decide_shared(shared_store).await;
         let final_data = result_store.read().await.clone();
         final_data
+    }
+
+    /// Run the agent's own [`NodeResult`] node with retry, distinguishing transient
+    /// from fatal errors.
+    ///
+    /// This is the ergonomic alternative to [`decide_result`]: it uses `self.node`
+    /// directly so callers don't need to hold a redundant external reference.
+    ///
+    /// - [`AgentFlowError::Timeout`] → **transient**: retried up to `max_retries` times.
+    /// - Any other [`AgentFlowError`] variant → **fatal**: returned immediately.
+    ///
+    /// # Errors
+    ///
+    /// Returns the last [`AgentFlowError`] if all retries are exhausted or a
+    /// fatal error is encountered.
+    ///
+    /// [`decide_result`]: Agent::decide_result
+    #[instrument(name = "agent.run_result", skip(self, input), fields(max_retries = self.max_retries))]
+    pub async fn run_result(
+        &self,
+        input: SharedStore,
+    ) -> Result<SharedStore, AgentFlowError>
+    where
+        N: NodeResult<SharedStore, SharedStore> + Clone,
+    {
+        let mut last_err = AgentFlowError::NodeFailure("No attempts made".to_string());
+        for attempt in 0..self.max_retries {
+            debug!(
+                attempt,
+                max_retries = self.max_retries,
+                "Agent::run_result attempt"
+            );
+            match self.node.call(input.clone()).await {
+                Ok(store) => {
+                    info!(attempt, "Agent::run_result succeeded");
+                    return Ok(store);
+                }
+                Err(AgentFlowError::Timeout(msg)) => {
+                    warn!(attempt, error = %msg, "Agent::run_result timeout; retrying");
+                    last_err = AgentFlowError::Timeout(msg);
+                    if attempt < self.max_retries - 1 && self.wait_millis > 0 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(self.wait_millis))
+                            .await;
+                    }
+                }
+                Err(other) => {
+                    warn!(attempt, error = %other, "Agent::run_result fatal error; aborting");
+                    return Err(other);
+                }
+            }
+        }
+        Err(last_err)
     }
 
     /// Run a [`NodeResult`] node with retry, distinguishing transient from fatal errors.

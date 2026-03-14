@@ -96,9 +96,12 @@ impl<T> TypedFlow<T> {
 
     /// Execute the typed flow.
     ///
-    /// If `max_steps` is set and the limit is reached, execution stops silently
-    /// and the current store is returned. Use [`run_safe`](Self::run_safe) to
-    /// receive an explicit error instead.
+    /// If `max_steps` is set and the limit is reached, execution stops and
+    /// [`TypedStore::limit_exceeded`] is set to `true` on the returned store.
+    /// Callers can inspect this flag to detect silent truncation.
+    ///
+    /// For strict enforcement (return an explicit error), use
+    /// [`run_safe`](Self::run_safe) instead.
     #[instrument(name = "typed_flow.run", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
     pub async fn run(&self, mut store: TypedStore<T>) -> TypedStore<T> {
         let mut current_node_name = if let Some(name) = &self.start_node {
@@ -113,6 +116,7 @@ impl<T> TypedFlow<T> {
         while let Some(node) = self.nodes.get(&current_node_name) {
             if steps >= limit {
                 warn!(steps, limit, "TypedFlow::run exceeded max_steps limit");
+                store.limit_exceeded = true;
                 break;
             }
             steps += 1;
@@ -308,6 +312,34 @@ mod tests {
 
         // Loop stops after 5 steps
         assert_eq!(final_state.count, 5);
+    }
+
+    #[tokio::test]
+    async fn test_typed_flow_run_sets_limit_exceeded_flag() {
+        let mut flow = TypedFlow::<TestState>::new().with_max_steps(3);
+
+        let node_a = create_typed_node(|store: TypedStore<TestState>| async move {
+            store.inner.write().await.count += 1;
+            store
+        });
+        let node_b = create_typed_node(|store: TypedStore<TestState>| async move {
+            store.inner.write().await.count += 1;
+            store
+        });
+
+        flow.add_node("A", node_a);
+        flow.add_node("B", node_b);
+        flow.add_transition("A", |_| Some("B".to_string()));
+        flow.add_transition("B", |_| Some("A".to_string()));
+
+        let store = TypedStore::new(TestState { count: 0, messages: vec![] });
+        let final_store = flow.run(store).await;
+
+        assert!(
+            final_store.limit_exceeded(),
+            "expected limit_exceeded flag to be set after max_steps breach"
+        );
+        assert_eq!(final_store.inner.read().await.count, 3);
     }
 
     #[tokio::test]

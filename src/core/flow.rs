@@ -83,8 +83,31 @@ impl Flow {
         self
     }
 
-    /// Create a flow and immediately register `node` as both the first node
-    /// and the start node.
+    /// Convenience constructor: create a [`Flow`] with a single node already
+    /// registered as the start node.
+    ///
+    /// This is exactly equivalent to:
+    ///
+    /// ```rust
+    /// # use agentflow::core::flow::Flow;
+    /// # use agentflow::core::node::{create_node, SharedStore};
+    /// # let node = create_node(|store: SharedStore| async move { store });
+    /// let mut flow = Flow::new();
+    /// flow.add_node("my_node", node);
+    /// // "my_node" is now the start node (first node added wins)
+    /// ```
+    ///
+    /// **What it does NOT do:**
+    /// - It does **not** add any edges — the node is registered but entirely
+    ///   isolated until you call [`add_edge`](Self::add_edge).
+    /// - It does **not** accept a [`ResultNode`](crate::core::node::ResultNode);
+    ///   use [`add_node`](Self::add_node) for that variant.
+    ///
+    /// Prefer `with_start` for simple linear flows where the first node is
+    /// known at construction time. For more complex graphs, use
+    /// `Flow::new()` + repeated [`add_node`](Self::add_node) / [`add_edge`](Self::add_edge)
+    /// calls, then optionally [`set_start`](Self::set_start) to pin the entry
+    /// point explicitly.
     pub fn with_start(name: &str, node: SimpleNode) -> Self {
         let mut flow = Self::new();
         flow.add_node(name, node);
@@ -100,10 +123,35 @@ impl Flow {
         self.edges.insert(name.to_string(), HashMap::new());
     }
 
+    /// Explicitly set (or override) the start node.
+    ///
+    /// Use this when you need to guarantee which node runs first regardless of
+    /// the order nodes were added via [`add_node`](Self::add_node).
+    ///
+    /// # Panics
+    ///
+    /// Does **not** panic if `name` is not yet registered — the node may be
+    /// added later. `run` / `run_safe` will silently return an empty store if
+    /// the start node name does not resolve at execution time.
+    pub fn set_start(&mut self, name: &str) {
+        self.start_node = Some(name.to_string());
+    }
+
     /// Add a directed edge: when `from` emits `action`, transition to `to`.
     ///
     /// The special action `"default"` is used by [`Workflow::connect`] for
-    /// unconditional transitions.
+    /// unconditional transitions. It also acts as a **fallback**: if a node
+    /// does not write `store["action"]` (or writes a non-string value),
+    /// [`Flow::run`] resolves the action to `"default"` automatically.
+    ///
+    /// # Warning — silent advance on missing `"action"`
+    ///
+    /// If a node forgets to set `store["action"]` and a `"default"` edge
+    /// exists for that node, execution will advance to the next node **without
+    /// error or warning**. This can mask bugs where a conditional node was
+    /// supposed to halt but silently continues instead. If you need strict
+    /// halting on missing actions, do not register a `"default"` edge for
+    /// nodes that must always set an explicit action.
     ///
     /// [`Workflow::connect`]: crate::patterns::workflow::Workflow::connect
     pub fn add_edge(&mut self, from: &str, action: &str, to: &str) {

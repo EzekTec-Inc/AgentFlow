@@ -59,12 +59,12 @@
 //!
 //! ## Crate layout
 //!
-//! - [`core`] — [`Node`], [`Flow`], [`SharedStore`], [`Store`], [`crate::core::typed_store::TypedStore`],
-//!   [`crate::core::typed_flow::TypedFlow`], [`Batch`], [`crate::core::error::AgentFlowError`]
+//! - [`core`] — [`Node`], [`Flow`], [`SharedStore`], [`Store`],
+//!   [`TypedStore`], [`TypedFlow`], [`Batch`], [`crate::core::error::AgentFlowError`]
 //! - [`patterns`] — [`Agent`], [`Workflow`], [`MultiAgent`], [`Rag`],
-//!   [`MapReduce`], [`StructuredOutput`]
+//!   [`MapReduce`], [`StructuredOutput`], [`BatchFlow`], [`RpiWorkflow`]
 //! - [`utils`] — shell tool nodes
-//! - `skills` *(feature)* — skill file parser, `RpiWorkflow`
+//! - `skills` *(feature)* — skill file parser, YAML skill definitions
 //! - `mcp` *(feature)* — MCP server
 
 pub mod core;
@@ -88,10 +88,14 @@ pub mod prelude {
     };
     pub use crate::core::parallel::ParallelFlow;
     pub use crate::core::store::Store;
+    pub use crate::core::typed_flow::{create_typed_node, SimpleTypedNode, TransitionFn, TypedFlow, TypedNode};
+    pub use crate::core::typed_store::TypedStore;
     pub use crate::patterns::agent::Agent;
+    pub use crate::patterns::batchflow::BatchFlow;
     pub use crate::patterns::mapreduce::MapReduce;
     pub use crate::patterns::multi_agent::{MergeStrategy, MultiAgent};
     pub use crate::patterns::rag::Rag;
+    pub use crate::patterns::rpi::RpiWorkflow;
     pub use crate::patterns::structured_output::StructuredOutput;
     pub use crate::patterns::workflow::Workflow;
     pub use crate::utils::tool::{create_corrective_retry_node, ToolEntry, ToolRegistry};
@@ -106,9 +110,13 @@ pub use crate::core::node::{
 };
 pub use crate::core::parallel::ParallelFlow;
 pub use crate::core::store::Store;
+pub use crate::core::typed_flow::{create_typed_node, SimpleTypedNode, TransitionFn, TypedFlow, TypedNode};
+pub use crate::core::typed_store::TypedStore;
 pub use crate::patterns::agent::Agent;
+pub use crate::patterns::batchflow::BatchFlow;
 pub use crate::patterns::mapreduce::MapReduce;
 pub use crate::patterns::multi_agent::{MergeStrategy, MultiAgent};
 pub use crate::patterns::rag::Rag;
+pub use crate::patterns::rpi::RpiWorkflow;
 pub use crate::patterns::structured_output::StructuredOutput;
 pub use crate::patterns::workflow::Workflow;

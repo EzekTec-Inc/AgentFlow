@@ -1,3 +1,4 @@
+use crate::core::error::AgentFlowError;
 use crate::core::node::SharedStore;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -25,7 +26,8 @@ use std::collections::HashMap;
 ///     let name = store.get_string("name").await; // Some("Alice")
 ///     let age  = store.get_i64("age").await;     // Some(30)
 ///
-///     // Panics with a clear message if the key is absent or the wrong type
+///     // Returns Err(AgentFlowError::NotFound) if absent,
+///     // Err(AgentFlowError::TypeMismatch) if the wrong type.
 ///     let name: String = store.require_string("name").await.unwrap();
 /// }
 /// ```
@@ -101,7 +103,35 @@ impl Store {
         guard.insert(key.into(), Value::Number(value.into()));
     }
 
-    /// Insert a float value. Silently does nothing if `value` is NaN or infinite.
+    /// Insert a float value.
+    ///
+    /// # Silent discard for non-finite values
+    ///
+    /// The JSON specification (RFC 8259 §6) has no representation for `NaN`,
+    /// `+∞`, or `-∞`. Accordingly, [`serde_json::Number::from_f64`] returns
+    /// `None` for any non-finite `f64`, and this method **silently does
+    /// nothing** when `value` is `NaN` or infinite — the key is neither
+    /// inserted nor updated.
+    ///
+    /// **Callers are responsible for validating the value before calling this
+    /// method.** Use [`f64::is_finite`] as a guard:
+    ///
+    /// ```rust,no_run
+    /// # use agentflow::core::store::Store;
+    /// # #[tokio::main] async fn main() {
+    /// let store = Store::new();
+    /// let v = f64::NAN;
+    /// if v.is_finite() {
+    ///     store.set_f64("score", v).await;
+    /// } else {
+    ///     // handle the invalid value — log, return an error, use a default, etc.
+    /// }
+    /// # }
+    /// ```
+    ///
+    /// If you need to store a sentinel for "no value", prefer omitting the key
+    /// entirely and using [`Store::get_f64`] returning `None` as the signal,
+    /// or store the value as a string (`"NaN"`) and parse it yourself.
     pub async fn set_f64(&self, key: impl Into<String>, value: f64) {
         let mut guard = self.inner.write().await;
         if let Some(num) = serde_json::Number::from_f64(value) {
@@ -121,41 +151,93 @@ impl Store {
         guard.insert(key.into(), value);
     }
 
-    /// Get the raw [`Value`] at `key`, or `Err` if absent.
-    pub async fn require(&self, key: &str) -> Result<Value, String> {
+    /// Get the raw [`Value`] at `key`, or `Err(AgentFlowError::NotFound)` if absent.
+    pub async fn require(&self, key: &str) -> Result<Value, AgentFlowError> {
         let guard = self.inner.read().await;
         guard
             .get(key)
             .cloned()
-            .ok_or_else(|| format!("Required key '{}' not found", key))
+            .ok_or_else(|| AgentFlowError::NotFound(format!("Required key '{}' not found", key)))
     }
 
-    /// Get the value at `key` as a `String`, or `Err` if absent or not a string.
-    pub async fn require_string(&self, key: &str) -> Result<String, String> {
-        self.get_string(key)
-            .await
-            .ok_or_else(|| format!("Required string key '{}' not found", key))
+    /// Get the value at `key` as a `String`, or:
+    /// - `Err(AgentFlowError::NotFound)` if the key is absent.
+    /// - `Err(AgentFlowError::TypeMismatch)` if the value is not a string.
+    pub async fn require_string(&self, key: &str) -> Result<String, AgentFlowError> {
+        let guard = self.inner.read().await;
+        match guard.get(key) {
+            None => Err(AgentFlowError::NotFound(format!(
+                "Required string key '{}' not found",
+                key
+            ))),
+            Some(v) => v.as_str().map(|s| s.to_string()).ok_or_else(|| {
+                AgentFlowError::TypeMismatch(format!(
+                    "Key '{}' is not a string (found {})",
+                    key,
+                    v
+                ))
+            }),
+        }
     }
 
-    /// Get the value at `key` as an `i64`, or `Err` if absent or not an integer.
-    pub async fn require_i64(&self, key: &str) -> Result<i64, String> {
-        self.get_i64(key)
-            .await
-            .ok_or_else(|| format!("Required i64 key '{}' not found", key))
+    /// Get the value at `key` as an `i64`, or:
+    /// - `Err(AgentFlowError::NotFound)` if the key is absent.
+    /// - `Err(AgentFlowError::TypeMismatch)` if the value is not an integer.
+    pub async fn require_i64(&self, key: &str) -> Result<i64, AgentFlowError> {
+        let guard = self.inner.read().await;
+        match guard.get(key) {
+            None => Err(AgentFlowError::NotFound(format!(
+                "Required i64 key '{}' not found",
+                key
+            ))),
+            Some(v) => v.as_i64().ok_or_else(|| {
+                AgentFlowError::TypeMismatch(format!(
+                    "Key '{}' is not an i64 (found {})",
+                    key,
+                    v
+                ))
+            }),
+        }
     }
 
-    /// Get the value at `key` as an `f64`, or `Err` if absent or not a float.
-    pub async fn require_f64(&self, key: &str) -> Result<f64, String> {
-        self.get_f64(key)
-            .await
-            .ok_or_else(|| format!("Required f64 key '{}' not found", key))
+    /// Get the value at `key` as an `f64`, or:
+    /// - `Err(AgentFlowError::NotFound)` if the key is absent.
+    /// - `Err(AgentFlowError::TypeMismatch)` if the value is not a float.
+    pub async fn require_f64(&self, key: &str) -> Result<f64, AgentFlowError> {
+        let guard = self.inner.read().await;
+        match guard.get(key) {
+            None => Err(AgentFlowError::NotFound(format!(
+                "Required f64 key '{}' not found",
+                key
+            ))),
+            Some(v) => v.as_f64().ok_or_else(|| {
+                AgentFlowError::TypeMismatch(format!(
+                    "Key '{}' is not an f64 (found {})",
+                    key,
+                    v
+                ))
+            }),
+        }
     }
 
-    /// Get the value at `key` as a `bool`, or `Err` if absent or not a boolean.
-    pub async fn require_bool(&self, key: &str) -> Result<bool, String> {
-        self.get_bool(key)
-            .await
-            .ok_or_else(|| format!("Required bool key '{}' not found", key))
+    /// Get the value at `key` as a `bool`, or:
+    /// - `Err(AgentFlowError::NotFound)` if the key is absent.
+    /// - `Err(AgentFlowError::TypeMismatch)` if the value is not a boolean.
+    pub async fn require_bool(&self, key: &str) -> Result<bool, AgentFlowError> {
+        let guard = self.inner.read().await;
+        match guard.get(key) {
+            None => Err(AgentFlowError::NotFound(format!(
+                "Required bool key '{}' not found",
+                key
+            ))),
+            Some(v) => v.as_bool().ok_or_else(|| {
+                AgentFlowError::TypeMismatch(format!(
+                    "Key '{}' is not a bool (found {})",
+                    key,
+                    v
+                ))
+            }),
+        }
     }
 
     /// Returns `true` if the store contains `key`.

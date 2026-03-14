@@ -71,6 +71,20 @@ impl Workflow {
     }
 
     /// Connect `from` → `to` using the `"default"` action (unconditional).
+    ///
+    /// This registers a `"default"` edge via [`Flow::add_edge`]. Because
+    /// [`Flow::run`] falls back to `"default"` whenever a node does **not**
+    /// write `store["action"]`, this edge will also fire if the node at `from`
+    /// forgets to set an explicit action.
+    ///
+    /// # Warning — silent advance on missing `"action"`
+    ///
+    /// If a node registered with `connect` was intended to emit a named action
+    /// on some code path, failing to set `store["action"]` on that path will
+    /// silently advance to `to` instead of halting. To prevent this, use
+    /// [`connect_with_action`](Self::connect_with_action) for nodes that must
+    /// always produce an explicit routing decision, and do **not** add a
+    /// `"default"` fallback edge for those nodes.
     pub fn connect(&mut self, from: &str, to: &str) {
         self.flow.add_edge(from, "default", to);
     }

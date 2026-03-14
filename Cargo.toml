@@ -3,6 +3,7 @@ name = "agentflow"
 version = "0.2.0"
 authors = ["Engr. Stephen Ezekwem <stephen.ezekwem@gmail.com>"]
 edition = "2021"
+# 1.75: async fn in traits (AFIT / RFC 3185) stabilised; return-position impl Trait in traits (RPITIT) stabilised.
 rust-version = "1.75"
 license = "AGPL-3.0-only"
 description = "Provider-agnostic, async-native Rust framework for building LLM agents, RAG pipelines, workflows, and multi-agent orchestration."

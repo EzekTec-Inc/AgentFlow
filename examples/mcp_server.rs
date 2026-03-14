@@ -10,10 +10,10 @@ name: SystemOps
 description: Core system operations
 version: 1.0.0
 tools:
-  - name: execute_shell
-    description: Run a bash command safely
-    command: bash
-    args: ["-c"]
+  - name: date_tool
+    description: Returns the current date and time
+    command: date
+    args: []
 ---
 You are a system operations tool.
 "#;
