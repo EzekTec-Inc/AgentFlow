@@ -94,9 +94,7 @@ pub mod prelude {
     pub use crate::patterns::rag::Rag;
     pub use crate::patterns::structured_output::StructuredOutput;
     pub use crate::patterns::workflow::Workflow;
-    pub use crate::utils::tool::{
-        create_corrective_retry_node, ToolEntry, ToolRegistry,
-    };
+    pub use crate::utils::tool::{create_corrective_retry_node, ToolEntry, ToolRegistry};
 }
 
 // Direct exports to match a flat namespace

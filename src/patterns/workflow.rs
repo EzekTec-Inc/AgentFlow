@@ -108,7 +108,10 @@ impl Workflow {
         }
         let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(store));
         let result = self.flow.run(shared_store).await;
-        info!(elapsed_ms = t.elapsed().as_millis(), "Workflow::execute_shared complete");
+        info!(
+            elapsed_ms = t.elapsed().as_millis(),
+            "Workflow::execute_shared complete"
+        );
         result
     }
 
@@ -125,7 +128,10 @@ impl Workflow {
         debug!("Workflow::execute starting");
         let result_store = self.execute_shared(store).await;
         let final_data = result_store.write().await.clone();
-        info!(elapsed_ms = t.elapsed().as_millis(), "Workflow::execute complete");
+        info!(
+            elapsed_ms = t.elapsed().as_millis(),
+            "Workflow::execute complete"
+        );
         final_data
     }
 
@@ -163,7 +169,10 @@ impl Node<SharedStore, SharedStore> for Workflow {
                 }
             }
             let result = self.flow.run(input).await;
-            info!(elapsed_ms = t.elapsed().as_millis(), "Workflow::call (Node impl) complete");
+            info!(
+                elapsed_ms = t.elapsed().as_millis(),
+                "Workflow::call (Node impl) complete"
+            );
             result
         })
     }

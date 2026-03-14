@@ -13,16 +13,15 @@ Run with: cargo run --example repl
 use agentflow::core::flow::Flow;
 use agentflow::core::node::{create_node, SharedStore};
 use dotenvy::dotenv;
+use rig::prelude::*;
+use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use rig::prelude::*;
-use rig::{completion::Prompt, providers};
 
-const SYSTEM: &str =
-    "You are a knowledgeable, concise assistant embedded in a terminal REPL. \
+const SYSTEM: &str = "You are a knowledgeable, concise assistant embedded in a terminal REPL. \
      Answer clearly in 1-3 sentences unless asked for more detail. \
      You have access to the conversation history provided in the user message.";
 
@@ -47,7 +46,7 @@ async fn main() {
                 g.insert("action".to_string(), Value::String("exit".to_string()));
             } else {
                 g.insert("user_input".to_string(), Value::String(input));
-                g.insert("action".to_string(),     Value::String("eval".to_string()));
+                g.insert("action".to_string(), Value::String("eval".to_string()));
             }
             drop(g);
             store
@@ -59,14 +58,19 @@ async fn main() {
         Box::pin(async move {
             let (user_input, history) = {
                 let g = store.read().await;
-                let input = g.get("user_input").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                let hist  = g.get("history")
+                let input = g
+                    .get("user_input")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let hist = g
+                    .get("history")
                     .and_then(|v| v.as_array())
                     .map(|a| {
                         a.iter()
-                         .filter_map(|v| v.as_str())
-                         .collect::<Vec<_>>()
-                         .join("\n")
+                            .filter_map(|v| v.as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n")
                     })
                     .unwrap_or_default();
                 (input, hist)
@@ -79,10 +83,10 @@ async fn main() {
             };
 
             let client = providers::openai::Client::from_env();
-            let agent  = client.agent("gpt-4o-mini").preamble(SYSTEM).build();
+            let agent = client.agent("gpt-4o-mini").preamble(SYSTEM).build();
 
             let reply = match agent.prompt(&prompt).await {
-                Ok(r)  => r,
+                Ok(r) => r,
                 Err(e) => format!("(LLM error: {e})"),
             };
 
@@ -95,11 +99,13 @@ async fn main() {
             ];
             match g.get_mut("history") {
                 Some(Value::Array(hist)) => hist.extend(new_entries),
-                _ => { g.insert("history".to_string(), Value::Array(new_entries)); }
+                _ => {
+                    g.insert("history".to_string(), Value::Array(new_entries));
+                }
             }
 
             g.insert("llm_reply".to_string(), Value::String(reply));
-            g.insert("action".to_string(),    Value::String("print".to_string()));
+            g.insert("action".to_string(), Value::String("print".to_string()));
             drop(g);
             store
         })
@@ -108,7 +114,9 @@ async fn main() {
     // ── Print: show LLM reply ────────────────────────────────────────────────
     let print_node = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let reply = store.read().await
+            let reply = store
+                .read()
+                .await
                 .get("llm_reply")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
@@ -116,18 +124,21 @@ async fn main() {
 
             println!("\nAssistant> {}", reply.trim());
 
-            store.write().await.insert("action".to_string(), Value::String("read".to_string()));
+            store
+                .write()
+                .await
+                .insert("action".to_string(), Value::String("read".to_string()));
             store
         })
     });
 
-    flow.add_node("read",  read_node);
-    flow.add_node("eval",  eval_node);
+    flow.add_node("read", read_node);
+    flow.add_node("eval", eval_node);
     flow.add_node("print", print_node);
 
-    flow.add_edge("read",  "eval",  "eval");
-    flow.add_edge("eval",  "print", "print");
-    flow.add_edge("print", "read",  "read");
+    flow.add_edge("read", "eval", "eval");
+    flow.add_edge("eval", "print", "print");
+    flow.add_edge("print", "read", "read");
     // "exit" has no edge → flow stops naturally
 
     let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));

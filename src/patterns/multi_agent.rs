@@ -112,7 +112,10 @@ impl MultiAgent {
     /// SharedStore strategy — all agents share one `Arc`.
     #[instrument(name = "multi_agent.run_shared", skip(self, store), fields(agent_count = self.agents.len()))]
     async fn run_shared(&self, store: SharedStore) -> SharedStore {
-        debug!(agent_count = self.agents.len(), "MultiAgent::run_shared spawning agents");
+        debug!(
+            agent_count = self.agents.len(),
+            "MultiAgent::run_shared spawning agents"
+        );
         let futures = self.agents.iter().map(|agent| agent.call(store.clone()));
         join_all(futures).await;
         info!("MultiAgent::run_shared complete");
@@ -122,7 +125,10 @@ impl MultiAgent {
     /// Namespaced strategy — snapshot per agent, merge with prefix.
     #[instrument(name = "multi_agent.run_namespaced", skip(self, store), fields(agent_count = self.agents.len()))]
     async fn run_namespaced(&self, store: SharedStore) -> SharedStore {
-        debug!(agent_count = self.agents.len(), "MultiAgent::run_namespaced starting");
+        debug!(
+            agent_count = self.agents.len(),
+            "MultiAgent::run_namespaced starting"
+        );
 
         // Snapshot the store once, then fan out to all agents concurrently
         let snapshot = store.read().await.clone();
@@ -151,7 +157,10 @@ impl MultiAgent {
         store: SharedStore,
         merge_fn: fn(Vec<SharedStore>) -> SharedStore,
     ) -> SharedStore {
-        debug!(agent_count = self.agents.len(), "MultiAgent::run_custom starting");
+        debug!(
+            agent_count = self.agents.len(),
+            "MultiAgent::run_custom starting"
+        );
 
         // Snapshot the store once, then fan out to all agents concurrently
         let snapshot = store.read().await.clone();

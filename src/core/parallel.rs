@@ -141,7 +141,7 @@ impl ParallelFlow {
             .enumerate()
             .map(|(i, flow)| {
                 let snapshot = clone_store_snapshot(&initial_store);
-                let flow = flow.clone();   // Flow: Clone
+                let flow = flow.clone(); // Flow: Clone
                 async move {
                     debug!(branch = i, "ParallelFlow branch started");
                     let result = flow.run(snapshot).await;

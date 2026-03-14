@@ -81,16 +81,17 @@ impl<N> Agent<N> {
     /// last store produced (with or without `"error"`) after all attempts are
     /// exhausted.
     #[instrument(name = "agent.decide_shared", skip(self, shared_store), fields(max_retries = self.max_retries))]
-    pub async fn decide_shared(
-        &self,
-        shared_store: SharedStore,
-    ) -> SharedStore
+    pub async fn decide_shared(&self, shared_store: SharedStore) -> SharedStore
     where
         N: Node<SharedStore, SharedStore> + Clone,
     {
         let mut result_store = None;
         for attempt in 0..self.max_retries {
-            debug!(attempt, max_retries = self.max_retries, "Agent::decide_shared attempt");
+            debug!(
+                attempt,
+                max_retries = self.max_retries,
+                "Agent::decide_shared attempt"
+            );
             let res = self.node.call(shared_store.clone()).await;
             let has_error = {
                 let store = res.read().await;
@@ -101,7 +102,10 @@ impl<N> Agent<N> {
                 result_store = Some(res);
                 break;
             }
-            warn!(attempt, "Agent::decide_shared node returned error key; retrying");
+            warn!(
+                attempt,
+                "Agent::decide_shared node returned error key; retrying"
+            );
             result_store = Some(res);
             if attempt < self.max_retries - 1 && self.wait_millis > 0 {
                 tokio::time::sleep(tokio::time::Duration::from_millis(self.wait_millis)).await;
@@ -151,7 +155,11 @@ impl<N> Agent<N> {
     {
         let mut last_err = AgentFlowError::NodeFailure("No attempts made".to_string());
         for attempt in 0..self.max_retries {
-            debug!(attempt, max_retries = self.max_retries, "Agent::decide_result attempt");
+            debug!(
+                attempt,
+                max_retries = self.max_retries,
+                "Agent::decide_result attempt"
+            );
             match node.call(input.clone()).await {
                 Ok(store) => {
                     info!(attempt, "Agent::decide_result succeeded");
@@ -161,7 +169,8 @@ impl<N> Agent<N> {
                     warn!(attempt, error = %msg, "Agent::decide_result timeout; retrying");
                     last_err = AgentFlowError::Timeout(msg);
                     if attempt < self.max_retries - 1 && self.wait_millis > 0 {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(self.wait_millis)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(self.wait_millis))
+                            .await;
                     }
                 }
                 Err(other) => {

@@ -45,7 +45,9 @@ impl fmt::Display for AgentFlowError {
             AgentFlowError::NotFound(msg) => write!(f, "Not found: {}", msg),
             AgentFlowError::Timeout(msg) => write!(f, "Timeout: {}", msg),
             AgentFlowError::NodeFailure(msg) => write!(f, "Node failure: {}", msg),
-            AgentFlowError::ExecutionLimitExceeded(msg) => write!(f, "Execution limit exceeded: {}", msg),
+            AgentFlowError::ExecutionLimitExceeded(msg) => {
+                write!(f, "Execution limit exceeded: {}", msg)
+            }
             AgentFlowError::TypeMismatch(msg) => write!(f, "Type mismatch: {}", msg),
             AgentFlowError::Custom(msg) => write!(f, "Error: {}", msg),
         }

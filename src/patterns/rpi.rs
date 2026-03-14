@@ -147,7 +147,10 @@ impl RpiWorkflow {
         let t = Instant::now();
         debug!("RpiWorkflow: starting research phase");
         let result = self.flow.run(store).await;
-        info!(elapsed_ms = t.elapsed().as_millis(), "RpiWorkflow: complete");
+        info!(
+            elapsed_ms = t.elapsed().as_millis(),
+            "RpiWorkflow: complete"
+        );
         result
     }
 }

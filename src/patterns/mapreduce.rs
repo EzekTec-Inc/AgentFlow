@@ -76,7 +76,10 @@ impl<M, R> MapReduce<M, R> {
         let t = Instant::now();
         debug!(input_count = inputs.len(), "MapReduce: starting map phase");
         let mapped = self.mapper.call(inputs).await;
-        debug!(mapped_count = mapped.len(), "MapReduce: map phase done, starting reduce");
+        debug!(
+            mapped_count = mapped.len(),
+            "MapReduce: map phase done, starting reduce"
+        );
         let result = self.reducer.call(mapped).await;
         info!(elapsed_ms = t.elapsed().as_millis(), "MapReduce: complete");
         result

@@ -25,7 +25,7 @@ async fn test_typed_flow_linear() {
 
     flow.add_node("A", a);
     flow.add_node("B", b);
-    
+
     flow.add_transition("A", |state| {
         if state.step_a {
             Some("B".to_string())
@@ -39,9 +39,9 @@ async fn test_typed_flow_linear() {
         step_b: false,
         count: 0,
     });
-    
+
     let result = flow.run(store).await;
-    
+
     let state = result.inner.read().await;
     assert!(state.step_a);
     assert!(state.step_b);
@@ -64,9 +64,9 @@ async fn test_typed_flow_run_safe_cycle() {
         step_b: false,
         count: 0,
     });
-    
+
     let result = flow.run_safe(store).await;
-    
+
     match result {
         Err(AgentFlowError::ExecutionLimitExceeded(_)) => {
             // Check final state if needed

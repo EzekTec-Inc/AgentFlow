@@ -12,26 +12,26 @@ Run with: cargo run --example rust-agentic-skills --features skills
 */
 
 use agentflow::core::error::AgentFlowError;
+use agentflow::core::flow::Flow;
 use agentflow::core::node::{create_node, SharedStore};
 use agentflow::patterns::rpi::RpiWorkflow;
 use agentflow::skills::Skill;
 use agentflow::utils::tool::create_tool_node;
-use agentflow::core::flow::Flow;
 use dotenvy::dotenv;
+use rig::prelude::*;
+use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing_subscriber::{fmt, EnvFilter};
-use rig::prelude::*;
-use rig::{completion::Prompt, providers};
 
 async fn llm_with_skill(skill_instructions: &str, role: &str, user: &str) -> String {
     let system = format!("{}\n\nYour current role: {}", skill_instructions, role);
     let client = providers::openai::Client::from_env();
-    let agent  = client.agent("gpt-4o-mini").preamble(&system).build();
+    let agent = client.agent("gpt-4o-mini").preamble(&system).build();
     match agent.prompt(user).await {
-        Ok(r)  => r,
+        Ok(r) => r,
         Err(e) => format!("LLM error: {e}"),
     }
 }
@@ -39,7 +39,9 @@ async fn llm_with_skill(skill_instructions: &str, role: &str, user: &str) -> Str
 #[tokio::main]
 async fn main() -> Result<(), AgentFlowError> {
     dotenv().ok();
-    fmt().with_env_filter(EnvFilter::new("agentflow=debug,rust_agentic_skills=debug")).init();
+    fmt()
+        .with_env_filter(EnvFilter::new("agentflow=debug,rust_agentic_skills=debug"))
+        .init();
 
     println!("=== Rust Agentic Skills ===\n");
 
@@ -55,7 +57,11 @@ fences, no explanations unless explicitly asked.
 "#;
 
     let skill = Skill::parse(skill_content)?;
-    println!("Skill: {} v{}", skill.name, skill.version.as_deref().unwrap_or("?"));
+    println!(
+        "Skill: {} v{}",
+        skill.name,
+        skill.version.as_deref().unwrap_or("?")
+    );
     println!("Description: {}\n", skill.description);
 
     let instructions = skill.instructions.clone();
@@ -64,7 +70,10 @@ fences, no explanations unless explicitly asked.
     let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
     let spec = "A CLI tool called `wordfreq` that reads a text file path from the \
                 command line and prints the top-10 most frequent words with their counts.";
-    store.write().await.insert("spec".to_string(), Value::String(spec.to_string()));
+    store
+        .write()
+        .await
+        .insert("spec".to_string(), Value::String(spec.to_string()));
 
     println!("Spec: {}\n", spec);
 
@@ -73,7 +82,13 @@ fences, no explanations unless explicitly asked.
     let research = create_node(move |s: SharedStore| {
         let inst = inst.clone();
         Box::pin(async move {
-            let spec = s.read().await.get("spec").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let spec = s
+                .read()
+                .await
+                .get("spec")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             println!("[Research] Identifying relevant crates and patterns…");
             let output = llm_with_skill(
                 &inst,
@@ -81,8 +96,12 @@ fences, no explanations unless explicitly asked.
                 &spec,
             ).await;
             println!("[Research]\n{}\n", output.trim());
-            s.write().await.insert("research".to_string(), Value::String(output));
-            s.write().await.insert("action".to_string(),   Value::String("default".to_string()));
+            s.write()
+                .await
+                .insert("research".to_string(), Value::String(output));
+            s.write()
+                .await
+                .insert("action".to_string(), Value::String("default".to_string()));
             s
         })
     });
@@ -95,8 +114,14 @@ fences, no explanations unless explicitly asked.
             let (spec, research) = {
                 let g = s.read().await;
                 (
-                    g.get("spec").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    g.get("research").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    g.get("spec")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    g.get("research")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )
             };
             println!("[Plan] Producing implementation steps…");
@@ -106,8 +131,12 @@ fences, no explanations unless explicitly asked.
                 &format!("Spec: {}\n\nResearch:\n{}", spec, research),
             ).await;
             println!("[Plan]\n{}\n", output.trim());
-            s.write().await.insert("plan".to_string(),   Value::String(output));
-            s.write().await.insert("action".to_string(), Value::String("default".to_string()));
+            s.write()
+                .await
+                .insert("plan".to_string(), Value::String(output));
+            s.write()
+                .await
+                .insert("action".to_string(), Value::String("default".to_string()));
             s
         })
     });
@@ -120,20 +149,36 @@ fences, no explanations unless explicitly asked.
             let (spec, plan, feedback) = {
                 let g = s.read().await;
                 (
-                    g.get("spec").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    g.get("plan").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    g.get("verify_feedback").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    g.get("spec")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    g.get("plan")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    g.get("verify_feedback")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                 )
             };
             let user = match &feedback {
-                Some(fb) => format!("Spec: {}\nPlan:\n{}\n\nFix based on feedback: {}", spec, plan, fb),
-                None     => format!("Spec: {}\nPlan:\n{}\n\nWrite the code now.", spec, plan),
+                Some(fb) => format!(
+                    "Spec: {}\nPlan:\n{}\n\nFix based on feedback: {}",
+                    spec, plan, fb
+                ),
+                None => format!("Spec: {}\nPlan:\n{}\n\nWrite the code now.", spec, plan),
             };
             println!("[Implement] Writing Rust code…");
-            let code = llm_with_skill(&inst, "Implementer: write the Rust source code.", &user).await;
+            let code =
+                llm_with_skill(&inst, "Implementer: write the Rust source code.", &user).await;
             println!("[Implement] {} chars of code generated.\n", code.len());
-            s.write().await.insert("code".to_string(),   Value::String(code));
-            s.write().await.insert("action".to_string(), Value::String("default".to_string()));
+            s.write()
+                .await
+                .insert("code".to_string(), Value::String(code));
+            s.write()
+                .await
+                .insert("action".to_string(), Value::String("default".to_string()));
             s
         })
     });
@@ -146,8 +191,14 @@ fences, no explanations unless explicitly asked.
             let (spec, code) = {
                 let g = s.read().await;
                 (
-                    g.get("spec").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    g.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    g.get("spec")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    g.get("code")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )
             };
             println!("[Verify] Code-reviewing implementation…");
@@ -156,7 +207,8 @@ fences, no explanations unless explicitly asked.
                 "Reviewer: check that the code matches the spec. \
                  Respond ONLY with PASS or FAIL: <one-sentence reason>.",
                 &format!("Spec: {}\n\nCode:\n{}", spec, code),
-            ).await;
+            )
+            .await;
             println!("[Verify] {}\n", verdict.trim());
 
             let mut g = s.write().await;
@@ -164,9 +216,17 @@ fences, no explanations unless explicitly asked.
                 g.remove("verify_feedback");
                 g.insert("action".to_string(), Value::String("done".to_string()));
             } else {
-                let reason = verdict.trim().strip_prefix("FAIL:").unwrap_or("").trim().to_string();
+                let reason = verdict
+                    .trim()
+                    .strip_prefix("FAIL:")
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
                 g.insert("verify_feedback".to_string(), Value::String(reason));
-                g.insert("action".to_string(), Value::String("reimplement".to_string()));
+                g.insert(
+                    "action".to_string(),
+                    Value::String("reimplement".to_string()),
+                );
             }
             drop(g);
             s
@@ -183,7 +243,9 @@ fences, no explanations unless explicitly asked.
     let store_after_rpi = workflow.run(store).await;
 
     // ── Optionally echo the generated code via tool node ───────────────────
-    let code_snippet = store_after_rpi.read().await
+    let code_snippet = store_after_rpi
+        .read()
+        .await
         .get("code")
         .and_then(|v| v.as_str())
         .unwrap_or("")
@@ -197,7 +259,11 @@ fences, no explanations unless explicitly asked.
         Value::String(format!("First 3 lines: {}", code_snippet)),
     );
 
-    let echo_tool = create_tool_node("echo_tool", "echo", vec!["Skill workflow complete!".to_string()]);
+    let echo_tool = create_tool_node(
+        "echo_tool",
+        "echo",
+        vec!["Skill workflow complete!".to_string()],
+    );
     let mut tool_flow = Flow::new();
     tool_flow.add_node("echo", echo_tool);
     let final_store = tool_flow.run(store_after_rpi).await;
@@ -205,7 +271,12 @@ fences, no explanations unless explicitly asked.
     // ── Print results ──────────────────────────────────────────────────────
     let g = final_store.read().await;
     println!("=== Generated Code ===\n");
-    println!("{}", g.get("code").and_then(|v| v.as_str()).unwrap_or("(no code)"));
+    println!(
+        "{}",
+        g.get("code")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(no code)")
+    );
 
     if let Some(stdout) = g.get("echo_tool_stdout") {
         println!("\nTool stdout: {}", stdout.as_str().unwrap_or("").trim());

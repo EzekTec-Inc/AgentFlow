@@ -6,8 +6,8 @@ pub mod flow;
 pub mod node;
 pub mod parallel;
 pub mod store;
-pub mod typed_store;
 pub mod typed_flow;
+pub mod typed_store;
 
 pub use batch::{Batch, ParallelBatch};
 pub use error::AgentFlowError;
@@ -18,5 +18,5 @@ pub use node::{
 };
 pub use parallel::ParallelFlow;
 pub use store::Store;
-pub use typed_store::TypedStore;
 pub use typed_flow::{create_typed_node, SimpleTypedNode, TypedFlow, TypedNode};
+pub use typed_store::TypedStore;

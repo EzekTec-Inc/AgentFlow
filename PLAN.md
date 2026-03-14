@@ -304,3 +304,16 @@ This plan outlines the step-by-step implementation of the mitigation strategies 
 - **Previous behavior:** Docs described v0.2.0 without the new primitives.
 - **New behavior:** All docs accurately describe the current codebase including the four new capabilities.
 - **Rollback instructions:** Revert this commit using `git revert HEAD`.
+
+## Phase 5: MCP Native Framework Demonstrations
+
+### Step 5.1: Rewrite MCP Server and Client Examples
+* **Timestamp (UTC):** 2026-03-14T10:00:00Z
+* **Summary:** Rewrote `examples/mcp_server.rs` and `examples/mcp_client.rs` to natively use AgentFlow's built-in `McpServer`, `Skill`, and `create_tool_node` primitives.
+* **Files modified:** 
+  - `examples/mcp_server.rs`
+  - `examples/mcp_client.rs`
+* **Exact reason:** The previous implementations relied entirely on external crates (`rmcp` and `rig`), bypassing AgentFlow's native capabilities. The rewrite demonstrates zero-code YAML skill parsing, the native asynchronous JSON-RPC stdio server, `Flow` graph orchestration, and built-in `Agent` fault tolerance.
+* **Previous behavior:** `mcp_server.rs` used `rmcp` macros and routing. `mcp_client.rs` manually managed child processes and relied heavily on the `rig` LLM framework to execute tools, ignoring the `SharedStore` and graph architecture.
+* **New behavior:** `mcp_server.rs` boots a native `McpServer` exposing a parsed `Skill`. `mcp_client.rs` builds a `Flow` that uses `create_tool_node` to interact with the server, wrapping it in an `Agent` for fault tolerance, and cleanly returning results via the `SharedStore`.
+* **Rollback:** `git checkout HEAD^ -- examples/mcp_server.rs examples/mcp_client.rs`

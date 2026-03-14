@@ -1,41 +1,32 @@
 use agentflow::core::error::AgentFlowError;
-use agentflow::mcp::McpServer;
-use agentflow::skills::{Skill, SkillTool};
-use tracing::{info, Level};
+use agentflow::mcp::server::McpServer;
+use agentflow::skills::Skill;
 
 #[tokio::main]
 async fn main() -> Result<(), AgentFlowError> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_max_level(Level::DEBUG)
-        .init();
-        
-    info!("Starting AgentFlow MCP Server...");
+    // 1. Showcase AgentFlow's native ability to parse Markdown/YAML skills
+    let sys_skill_content = r#"---
+name: SystemOps
+description: Core system operations
+version: 1.0.0
+tools:
+  - name: execute_shell
+    description: Run a bash command safely
+    command: bash
+    args: ["-c"]
+---
+You are a system operations tool.
+"#;
+    let sys_skill = Skill::parse(sys_skill_content)?;
 
-    let example_skill = Skill {
-        name: "system_info".to_string(),
-        description: "A set of tools for retrieving basic system information".to_string(),
-        version: Some("1.0.0".to_string()),
-        instructions: "Use these tools to gather system info.".to_string(),
-        tools: Some(vec![
-            SkillTool {
-                name: "echo_tool".to_string(),
-                description: Some("Echoes back the provided arguments".to_string()),
-                command: "echo".to_string(),
-                args: vec![],
-            },
-            SkillTool {
-                name: "date_tool".to_string(),
-                description: Some("Returns the current date and time".to_string()),
-                command: "date".to_string(),
-                args: vec![],
-            },
-        ]),
-    };
+    // 2. Initialize AgentFlow's built-in native MCP Server
+    let server = McpServer::new("AgentFlow_Demo_Server", "0.2.0")
+        // 3. Register the parsed skill directly
+        .register_skill(sys_skill);
 
-    let server = McpServer::new("AgentFlow_System_MCP", "0.1.0")
-        .register_skill(example_skill);
-
+    // 4. Run the native asynchronous stdin/stdout loop
+    // This automatically handles initialization, tools/list, and tools/call
     server.run().await?;
+    
     Ok(())
 }

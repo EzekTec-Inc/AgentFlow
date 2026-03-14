@@ -1,9 +1,9 @@
+use crate::core::error::AgentFlowError;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use crate::core::error::AgentFlowError;
 use std::time::Duration;
 
 use dyn_clone::DynClone;
@@ -70,8 +70,10 @@ dyn_clone::clone_trait_object!(<I, O> Node<I, O>);
 /// [`Agent::decide_result`]: crate::patterns::agent::Agent::decide_result
 pub trait NodeResult<I, O>: Send + Sync + DynClone {
     /// Execute the node, returning `Ok(O)` on success or an [`AgentFlowError`] on failure.
-    fn call(&self, input: I)
-        -> Pin<Box<dyn Future<Output = Result<O, AgentFlowError>> + Send + '_>>;
+    fn call(
+        &self,
+        input: I,
+    ) -> Pin<Box<dyn Future<Output = Result<O, AgentFlowError>> + Send + '_>>;
 }
 dyn_clone::clone_trait_object!(<I, O> NodeResult<I, O>);
 
@@ -171,7 +173,8 @@ where
         fn call(
             &self,
             input: SharedStore,
-        ) -> Pin<Box<dyn Future<Output = Result<SharedStore, AgentFlowError>> + Send + '_>> {
+        ) -> Pin<Box<dyn Future<Output = Result<SharedStore, AgentFlowError>> + Send + '_>>
+        {
             Box::pin(self.0(input))
         }
     }
@@ -466,7 +469,10 @@ where
     I: Send + 'static,
     O: Send + 'static,
 {
-    fn call(&self, input: I) -> Pin<Box<dyn Future<Output = Result<O, AgentFlowError>> + Send + '_>> {
+    fn call(
+        &self,
+        input: I,
+    ) -> Pin<Box<dyn Future<Output = Result<O, AgentFlowError>> + Send + '_>> {
         (**self).call(input)
     }
 }

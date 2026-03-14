@@ -35,7 +35,11 @@ impl BatchFlow {
             }
             let _ = wf.call(shared.clone()).await;
         }
-        info!(batch_count = total, elapsed_ms = t.elapsed().as_millis(), "BatchFlow: complete");
+        info!(
+            batch_count = total,
+            elapsed_ms = t.elapsed().as_millis(),
+            "BatchFlow: complete"
+        );
         shared
     }
 }

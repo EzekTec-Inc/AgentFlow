@@ -1,15 +1,18 @@
 use crate::core::error::AgentFlowError;
 use crate::core::typed_store::TypedStore;
+use dyn_clone::DynClone;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use dyn_clone::DynClone;
 use tracing::{debug, info, instrument, warn};
 
 /// Core Node trait for typed state
 pub trait TypedNode<T>: Send + Sync + DynClone {
-    fn call(&self, input: TypedStore<T>) -> Pin<Box<dyn Future<Output = TypedStore<T>> + Send + '_>>;
+    fn call(
+        &self,
+        input: TypedStore<T>,
+    ) -> Pin<Box<dyn Future<Output = TypedStore<T>> + Send + '_>>;
 }
 dyn_clone::clone_trait_object!(<T> TypedNode<T>);
 
@@ -36,7 +39,10 @@ where
         F: Fn(TypedStore<T>) -> Fut + Send + Sync + Clone,
         Fut: Future<Output = TypedStore<T>> + Send + 'static,
     {
-        fn call(&self, input: TypedStore<T>) -> Pin<Box<dyn Future<Output = TypedStore<T>> + Send + '_>> {
+        fn call(
+            &self,
+            input: TypedStore<T>,
+        ) -> Pin<Box<dyn Future<Output = TypedStore<T>> + Send + '_>> {
             Box::pin(self.0(input))
         }
     }
@@ -84,7 +90,8 @@ impl<T> TypedFlow<T> {
     where
         F: Fn(&T) -> Option<String> + Send + Sync + 'static,
     {
-        self.transitions.insert(from.to_string(), Arc::new(transition_fn));
+        self.transitions
+            .insert(from.to_string(), Arc::new(transition_fn));
     }
 
     /// Execute the typed flow.
@@ -216,7 +223,7 @@ mod tests {
     #[tokio::test]
     async fn test_typed_flow_execution() {
         let mut flow = TypedFlow::<TestState>::new().with_max_steps(10);
-        
+
         let node_a = create_typed_node(|store: TypedStore<TestState>| async move {
             {
                 let mut guard = store.inner.write().await;
@@ -226,7 +233,7 @@ mod tests {
             }
             store
         });
-        
+
         let node_b = create_typed_node(|store: TypedStore<TestState>| async move {
             {
                 let mut guard = store.inner.write().await;
@@ -236,10 +243,10 @@ mod tests {
             }
             store
         });
-        
+
         flow.add_node("A", node_a);
         flow.add_node("B", node_b);
-        
+
         flow.add_transition("A", |state| {
             if state.count < 3 {
                 Some("B".to_string())
@@ -247,17 +254,18 @@ mod tests {
                 None
             }
         });
-        
-        flow.add_transition("B", |_state| {
-            Some("A".to_string())
-        });
-        
-        let state = TestState { count: 0, messages: vec![] };
+
+        flow.add_transition("B", |_state| Some("A".to_string()));
+
+        let state = TestState {
+            count: 0,
+            messages: vec![],
+        };
         let store = TypedStore::new(state);
-        
+
         let final_store = flow.run(store).await;
         let final_state = final_store.inner.read().await;
-        
+
         assert_eq!(final_state.count, 3);
         assert_eq!(final_state.messages, vec!["A: 1", "B: 2", "A: 3"]);
     }
@@ -265,7 +273,7 @@ mod tests {
     #[tokio::test]
     async fn test_typed_flow_max_steps_prevents_infinite_loop() {
         let mut flow = TypedFlow::<TestState>::new().with_max_steps(5);
-        
+
         let node_a = create_typed_node(|store: TypedStore<TestState>| async move {
             {
                 let mut guard = store.inner.write().await;
@@ -273,7 +281,7 @@ mod tests {
             }
             store
         });
-        
+
         let node_b = create_typed_node(|store: TypedStore<TestState>| async move {
             {
                 let mut guard = store.inner.write().await;
@@ -281,17 +289,20 @@ mod tests {
             }
             store
         });
-        
+
         flow.add_node("A", node_a);
         flow.add_node("B", node_b);
-        
+
         // Infinite loop
         flow.add_transition("A", |_state| Some("B".to_string()));
         flow.add_transition("B", |_state| Some("A".to_string()));
-        
-        let state = TestState { count: 0, messages: vec![] };
+
+        let state = TestState {
+            count: 0,
+            messages: vec![],
+        };
         let store = TypedStore::new(state);
-        
+
         let final_store = flow.run(store).await;
         let final_state = final_store.inner.read().await;
 
@@ -320,7 +331,10 @@ mod tests {
         flow.add_transition("A", |_state| Some("B".to_string()));
         flow.add_transition("B", |_state| Some("A".to_string()));
 
-        let store = TypedStore::new(TestState { count: 0, messages: vec![] });
+        let store = TypedStore::new(TestState {
+            count: 0,
+            messages: vec![],
+        });
 
         let result = flow.run_safe(store).await;
         assert!(
@@ -330,4 +344,3 @@ mod tests {
         );
     }
 }
-

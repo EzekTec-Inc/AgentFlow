@@ -1,0 +1,10 @@
+
+[[agent]]
+name        = "researcher"
+preamble    = "You are a data researcher. Use available tools to investigate the goal and return a summary."
+output_key  = "research_result"
+
+[[agent]]
+name        = "writer"
+preamble    = "You are a report writer. Synthesize findings into a complete and structured report."
+output_key  = "report_result"

@@ -33,22 +33,27 @@ impl Skill {
     pub fn parse(content: &str) -> Result<Self, AgentFlowError> {
         if !content.starts_with("---") {
             return Err(AgentFlowError::Custom(
-                "Invalid skill file format: Missing YAML frontmatter (must start with ---)".to_string()
+                "Invalid skill file format: Missing YAML frontmatter (must start with ---)"
+                    .to_string(),
             ));
         }
 
         let parts: Vec<&str> = content.splitn(3, "---").collect();
         if parts.len() < 3 {
             return Err(AgentFlowError::Custom(
-                "Invalid skill file format: Missing closing --- for YAML frontmatter".to_string()
+                "Invalid skill file format: Missing closing --- for YAML frontmatter".to_string(),
             ));
         }
 
         let frontmatter = parts[1].trim();
         let body = parts[2].trim();
 
-        let mut skill: Skill = serde_yaml::from_str(frontmatter)
-            .map_err(|e| AgentFlowError::Custom(format!("Failed to parse YAML frontmatter in skill file: {}", e)))?;
+        let mut skill: Skill = serde_yaml::from_str(frontmatter).map_err(|e| {
+            AgentFlowError::Custom(format!(
+                "Failed to parse YAML frontmatter in skill file: {}",
+                e
+            ))
+        })?;
 
         skill.instructions = body.to_string();
 

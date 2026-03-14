@@ -26,12 +26,16 @@ anyhow = "1.0.102"
 
 [dev-dependencies]
 rig = { package = "rig-core", version = "0.16.0", features = ["rmcp"] }
-rmcp = { version = "0.3.2", features = ["transport-child-process"] }
+rmcp = { version = "0.3.2", features = ["server", "transport-child-process", "transport-io"] }
 dotenvy = "0.15.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 toml = "1.0"
 inquire = "0.6"
 qdrant-client = "1.15.0"
+reqwest = "0.13.2"
+scraper = "0.25.0"
+docx-rs = "0.4.19"
+schemars = "1.2.1"
 
 [features]
 skills = ["dep:serde_yaml"]

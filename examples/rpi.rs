@@ -15,19 +15,19 @@ Run with: cargo run --example rpi
 use agentflow::core::node::{create_node, SharedStore};
 use agentflow::patterns::rpi::RpiWorkflow;
 use dotenvy::dotenv;
+use rig::prelude::*;
+use rig::{completion::Prompt, providers};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing_subscriber::{fmt, EnvFilter};
-use rig::prelude::*;
-use rig::{completion::Prompt, providers};
 
 async fn llm(system: &str, user: &str) -> String {
     let client = providers::openai::Client::from_env();
-    let agent  = client.agent("gpt-4o-mini").preamble(system).build();
+    let agent = client.agent("gpt-4o-mini").preamble(system).build();
     match agent.prompt(user).await {
-        Ok(r)  => r,
+        Ok(r) => r,
         Err(e) => format!("LLM error: {e}"),
     }
 }
@@ -35,7 +35,9 @@ async fn llm(system: &str, user: &str) -> String {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
-    fmt().with_env_filter(EnvFilter::new("agentflow=debug,rpi=debug")).init();
+    fmt()
+        .with_env_filter(EnvFilter::new("agentflow=debug,rpi=debug"))
+        .init();
 
     let goal = "Write a Rust function `fn word_count(s: &str) -> HashMap<String, usize>` \
                 that counts word frequencies in a string (case-insensitive). \
@@ -44,19 +46,26 @@ async fn main() {
     // ── Research ─────────────────────────────────────────────────────────────
     let research = create_node(|store: SharedStore| {
         Box::pin(async move {
-            let goal = store.read().await.get("goal").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let goal = store
+                .read()
+                .await
+                .get("goal")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             println!("[Research] Gathering context for goal…");
 
             let context = llm(
                 "You are a Rust expert. Given a coding goal, list the key Rust concepts, \
                  stdlib types, and edge cases that are relevant. Be concise.",
                 &goal,
-            ).await;
+            )
+            .await;
             println!("[Research] Context:\n{}\n", context.trim());
 
             let mut g = store.write().await;
             g.insert("context".to_string(), Value::String(context));
-            g.insert("action".to_string(),  Value::String("default".to_string()));
+            g.insert("action".to_string(), Value::String("default".to_string()));
             drop(g);
             store
         })
@@ -68,8 +77,14 @@ async fn main() {
             let (goal, context) = {
                 let g = store.read().await;
                 (
-                    g.get("goal").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    g.get("context").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    g.get("goal")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    g.get("context")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )
             };
             println!("[Plan] Creating implementation plan…");
@@ -78,11 +93,12 @@ async fn main() {
                 "You are a Rust software architect. Given a goal and research context, \
                  produce a concise numbered implementation plan (steps only, no code).",
                 &format!("Goal: {}\n\nContext:\n{}", goal, context),
-            ).await;
+            )
+            .await;
             println!("[Plan] Plan:\n{}\n", plan_text.trim());
 
             let mut g = store.write().await;
-            g.insert("plan".to_string(),   Value::String(plan_text));
+            g.insert("plan".to_string(), Value::String(plan_text));
             g.insert("action".to_string(), Value::String("default".to_string()));
             drop(g);
             store
@@ -95,9 +111,17 @@ async fn main() {
             let (goal, plan_text, feedback) = {
                 let g = store.read().await;
                 (
-                    g.get("goal").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    g.get("plan").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    g.get("verify_feedback").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    g.get("goal")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    g.get("plan")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    g.get("verify_feedback")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                 )
             };
 
@@ -117,7 +141,7 @@ async fn main() {
             println!("[Implement] Code:\n{}\n", code.trim());
 
             let mut g = store.write().await;
-            g.insert("code".to_string(),   Value::String(code));
+            g.insert("code".to_string(), Value::String(code));
             g.insert("action".to_string(), Value::String("default".to_string()));
             drop(g);
             store
@@ -130,8 +154,14 @@ async fn main() {
             let (goal, code) = {
                 let g = store.read().await;
                 (
-                    g.get("goal").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                    g.get("code").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                    g.get("goal")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    g.get("code")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                 )
             };
 
@@ -148,9 +178,17 @@ async fn main() {
                 g.remove("verify_feedback");
                 g.insert("action".to_string(), Value::String("done".to_string()));
             } else {
-                let reason = verdict.trim().strip_prefix("FAIL:").unwrap_or("").trim().to_string();
+                let reason = verdict
+                    .trim()
+                    .strip_prefix("FAIL:")
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
                 g.insert("verify_feedback".to_string(), Value::String(reason));
-                g.insert("action".to_string(), Value::String("reimplement".to_string()));
+                g.insert(
+                    "action".to_string(),
+                    Value::String("reimplement".to_string()),
+                );
             }
             drop(g);
             store
@@ -164,7 +202,10 @@ async fn main() {
         .with_verify(verify);
 
     let store: SharedStore = Arc::new(RwLock::new(HashMap::new()));
-    store.write().await.insert("goal".to_string(), Value::String(goal.to_string()));
+    store
+        .write()
+        .await
+        .insert("goal".to_string(), Value::String(goal.to_string()));
 
     println!("=== RPI Workflow ===");
     println!("Goal: {}\n", goal);
@@ -173,5 +214,10 @@ async fn main() {
     let g = final_store.read().await;
 
     println!("\n=== Final Implementation ===\n");
-    println!("{}", g.get("code").and_then(|v| v.as_str()).unwrap_or("(no code produced)"));
+    println!(
+        "{}",
+        g.get("code")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(no code produced)")
+    );
 }
