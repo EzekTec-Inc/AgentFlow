@@ -772,3 +772,29 @@ Replaced one-line comment with full section that:
 - **Previous behavior:** `PLAN.md` ended at Phase 4.
 - **New behavior:** `PLAN.md` now includes Phase 5 detailing CI/CD, documentation, code quality, and security improvements.
 - **Rollback instructions:** Delete the Phase 5 section and this log entry from `PLAN.md`.
+
+## [2026-03-14T20:45:00Z] Implement Step 5.2: Crate-Level Code Quality Attributes
+- **Summary of change:** Enforced `#![warn(missing_docs)]` across the codebase, added missing docstrings to submodules and fields, and ensured no panicking `unwrap()`/`expect()` calls exist in library code.
+- **Files modified:**
+  - `src/lib.rs`
+  - `src/core/mod.rs`
+  - `src/core/typed_flow.rs`
+  - `src/patterns/mod.rs`
+  - `src/patterns/batchflow.rs`
+  - `src/skills/mod.rs`
+  - `src/mcp/mod.rs`
+  - `src/mcp/server.rs`
+- **Exact reason:** Required to fulfill Step 5.2 (Production Readiness) and ensure library consumers have full API documentation and safe error boundaries without panic vectors.
+- **Previous behavior:** Several types, fields, and modules lacked documentation, triggering compiler warnings after the `#![warn(missing_docs)]` was added.
+- **New behavior:** All types and modules are documented; `cargo clippy --all-targets` passes without documentation or unwrap/expect warnings in the library code.
+- **Rollback instructions:** Run `git revert HEAD` to remove the documentation additions.
+
+## [2026-03-14T20:55:00Z] Update design system endpoint in MCP examples
+- **Summary of change:** Appended a trailing slash to the root URL for the GoA Design System in `mcp_server.rs` and `mcp_client.rs`.
+- **Files modified:**
+  - `examples/mcp_server.rs`
+  - `examples/mcp_client.rs`
+- **Exact reason:** User explicitly requested to use the endpoint `https://design.alberta.ca/` in the MCP client and server examples.
+- **Previous behavior:** URL was `https://design.alberta.ca` without the trailing slash.
+- **New behavior:** URL is `https://design.alberta.ca/` with the trailing slash.
+- **Rollback instructions:** Run `git checkout -- examples/` or edit files to remove the trailing slash.

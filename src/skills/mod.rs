@@ -3,22 +3,32 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Represents an executable tool defined in a skill.
 pub struct SkillTool {
+    /// Tool name.
     pub name: String,
+    /// Optional tool description.
     pub description: Option<String>,
+    /// System command to execute.
     pub command: String,
     #[serde(default)]
+    /// Arguments to pass to the command.
     pub args: Vec<String>,
 }
 
 /// Represents a loaded Skill from a SKILL.md file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Skill {
+    /// Skill name.
     pub name: String,
+    /// Skill description.
     pub description: String,
+    /// Optional skill version.
     pub version: Option<String>,
+    /// Optional list of tools provided by this skill.
     pub tools: Option<Vec<SkillTool>>,
     #[serde(default)]
+    /// Base instructions or prompt for the skill.
     pub instructions: String,
 }
 

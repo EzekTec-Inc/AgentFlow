@@ -10,7 +10,7 @@ description: Tools for crawling the Government of Alberta design system and gene
 version: 1.0.0
 tools:
   - name: crawl_goa_url
-    description: Fetches content from a Government of Alberta Design System URL (e.g., https://design.alberta.ca)
+    description: Fetches content from a Government of Alberta Design System URL (e.g., https://design.alberta.ca/)
     command: curl
     args: ["-sL"]
   - name: generate_pdf

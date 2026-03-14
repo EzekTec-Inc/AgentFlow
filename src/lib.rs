@@ -75,9 +75,11 @@ pub mod patterns;
 pub mod utils;
 
 #[cfg(feature = "skills")]
+/// Skill loading and execution support (requires the `skills` feature).
 pub mod skills;
 
 #[cfg(feature = "mcp")]
+/// MCP server integration (requires the `mcp` feature).
 pub mod mcp;
 
 /// Convenience re-exports — import everything you need with `use agentflow::prelude::*`.

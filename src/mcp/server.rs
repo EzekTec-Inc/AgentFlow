@@ -18,6 +18,7 @@ pub struct McpServer {
 }
 
 impl McpServer {
+    /// Create a new `McpServer` instance.
     pub fn new(name: impl Into<String>, version: impl Into<String>) -> Self {
         Self {
             name: name.into(),

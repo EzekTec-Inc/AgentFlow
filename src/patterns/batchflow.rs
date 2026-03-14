@@ -5,10 +5,12 @@ use tracing::{debug, info, instrument};
 
 /// BatchFlow: runs a workflow for each batch of parameter sets, like Python's BatchFlow.
 pub struct BatchFlow {
+    /// The workflow to execute for each batch item.
     pub workflow: Workflow,
 }
 
 impl BatchFlow {
+    /// Create a new `BatchFlow` with the given workflow.
     pub fn new(workflow: Workflow) -> Self {
         Self { workflow }
     }

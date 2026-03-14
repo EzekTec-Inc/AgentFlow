@@ -127,7 +127,7 @@ async fn main() -> Result<(), AgentFlowError> {
                 info!("--- [Agent 1] Web Researcher & Crawler ---");
                 if !has_crawl {
                     state.agent_error = Some(AgentError::CrawlFailed {
-                        url: "https://design.alberta.ca".into(),
+                        url: "https://design.alberta.ca/".into(),
                         reason: "Missing crawl tool".into(),
                         retry_hint: "Add crawl_goa_url tool to MCP".into()
                     });

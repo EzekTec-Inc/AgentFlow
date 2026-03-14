@@ -9,6 +9,7 @@ use tracing::{debug, info, instrument, warn};
 
 /// Core Node trait for typed state
 pub trait TypedNode<T>: Send + Sync + DynClone {
+    /// Consume `input`, run the node's logic, and return the mutated store.
     fn call(
         &self,
         input: TypedStore<T>,
@@ -16,6 +17,7 @@ pub trait TypedNode<T>: Send + Sync + DynClone {
 }
 dyn_clone::clone_trait_object!(<T> TypedNode<T>);
 
+/// Boxed, type-erased [`TypedNode`] used in a [`TypedFlow`].
 pub type SimpleTypedNode<T> = Box<dyn TypedNode<T>>;
 
 /// Helper to create a TypedNode from a function
@@ -50,6 +52,7 @@ where
     Box::new(FuncNode(func, std::marker::PhantomData))
 }
 
+/// Closure type used to choose the next node given the current state.
 pub type TransitionFn<T> = Arc<dyn Fn(&T) -> Option<String> + Send + Sync>;
 
 /// A flow orchestrator that strictly uses `TypedStore<T>`
@@ -57,10 +60,12 @@ pub struct TypedFlow<T> {
     nodes: HashMap<String, SimpleTypedNode<T>>,
     transitions: HashMap<String, TransitionFn<T>>,
     start_node: Option<String>,
+    /// Optional limit on execution steps to prevent infinite loops.
     pub max_steps: Option<usize>,
 }
 
 impl<T> TypedFlow<T> {
+    /// Create a new, empty `TypedFlow`.
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
