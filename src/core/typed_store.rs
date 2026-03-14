@@ -44,6 +44,7 @@ use tokio::sync::RwLock;
 /// ```
 ///
 /// [`TypedFlow`]: crate::core::typed_flow::TypedFlow
+/// [`TypedFlow::run`]: crate::core::typed_flow::TypedFlow::run
 /// [`TypedFlow::run_safe`]: crate::core::typed_flow::TypedFlow::run_safe
 /// [`SharedStore`]: crate::core::node::SharedStore
 #[derive(Debug)]

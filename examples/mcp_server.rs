@@ -4,28 +4,27 @@ use agentflow::skills::Skill;
 
 #[tokio::main]
 async fn main() -> Result<(), AgentFlowError> {
-    // 1. Showcase AgentFlow's native ability to parse Markdown/YAML skills
-    let sys_skill_content = r#"---
-name: SystemOps
-description: Core system operations
+    let skill_content = r#"---
+name: GoAResearchTools
+description: Tools for crawling the Government of Alberta design system and generating reports.
 version: 1.0.0
 tools:
-  - name: date_tool
-    description: Returns the current date and time
-    command: date
-    args: []
+  - name: crawl_goa_url
+    description: Fetches content from a Government of Alberta Design System URL (e.g., https://design.alberta.ca)
+    command: curl
+    args: ["-sL"]
+  - name: generate_pdf
+    description: Generates a PDF report from markdown content. Pass the content as the first argument.
+    command: bash
+    args: ["-c", "cat << 'EOF' > report.md\n$1\nEOF\necho '% GoA Design System Report' > report.pdf && echo 'PDF generation mocked successfully.'"]
 ---
-You are a system operations tool.
+You are a tool server providing capabilities for the GoA research pipeline.
 "#;
-    let sys_skill = Skill::parse(sys_skill_content)?;
+    let skill = Skill::parse(skill_content)?;
 
-    // 2. Initialize AgentFlow's built-in native MCP Server
-    let server = McpServer::new("AgentFlow_Demo_Server", "0.2.0")
-        // 3. Register the parsed skill directly
-        .register_skill(sys_skill);
+    let server = McpServer::new("GoA_Research_Server", "0.2.0")
+        .register_skill(skill);
 
-    // 4. Run the native asynchronous stdin/stdout loop
-    // This automatically handles initialization, tools/list, and tools/call
     server.run().await?;
     
     Ok(())

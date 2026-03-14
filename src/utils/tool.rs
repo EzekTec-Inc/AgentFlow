@@ -242,7 +242,7 @@ impl ToolRegistry {
 ///    `wait_millis` ms, and repeat up to `max_retries` times total.
 /// 4. If all attempts fail, write the final error into `error_key` and return
 ///    the store unchanged (infallible surface — use
-///    [`create_corrective_retry_node_safe`] for an `Err` return).
+///    `create_result_node` for an `Err` return).
 ///
 /// # Example
 ///
