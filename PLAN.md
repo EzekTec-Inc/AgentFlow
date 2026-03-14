@@ -719,3 +719,56 @@ Replaced one-line comment with full section that:
 - `README.md`: new `## MSRV` section (before `## License`) with a table linking each feature to its RFC and stabilisation version, plus a note about the `rust-version` enforcement and how to pin an older release.
 
 **Breaking change:** None.
+
+## Phase 5: Production Readiness (v1.0)
+**Focus:** Hardening the crate for public release on crates.io with strict quality, documentation, and security guarantees.
+
+### Step 5.1: Strict CI Linting for Documentation
+* **Timestamp (UTC):** 2026-03-14T19:46:00Z
+* **Objective:** Ensure all public APIs are documented and prevent broken intra-doc links from being merged.
+* **Tasks:**
+  1. Add a `rustdoc` step to `.github/workflows/ci.yml` using `cargo rustdoc -- -D warnings`.
+* **Files modified:** `.github/workflows/ci.yml`
+
+### Step 5.2: Crate-Level Code Quality Attributes
+* **Timestamp (UTC):** 2026-03-14T19:46:00Z
+* **Objective:** Enforce 100% documentation coverage and prevent the use of panicking macros (`unwrap`, `expect`) in library code.
+* **Tasks:**
+  1. Add `#![warn(missing_docs)]` (or `#![deny(missing_docs)]`) to `src/lib.rs`.
+  2. Add `#![warn(clippy::unwrap_used, clippy::expect_used)]` to `src/lib.rs`.
+  3. Replace existing `.unwrap()` calls in the codebase with proper error propagation or safe fallbacks.
+* **Files modified:** `src/lib.rs`, `src/core/flow.rs`, `src/core/node.rs`, `src/core/store.rs`, `src/utils/tool.rs`
+
+### Step 5.3: Automated Release Pipeline (CD)
+* **Timestamp (UTC):** 2026-03-14T19:46:00Z
+* **Objective:** Automate the publishing of the crate to `crates.io` when a new version tag is pushed.
+* **Tasks:**
+  1. Create `.github/workflows/publish.yml`.
+  2. Configure it to trigger on `tags: ['v*.*.*']`.
+  3. Include steps to checkout, build, test, and run `cargo publish` using a `CARGO_REGISTRY_TOKEN` secret.
+* **Files modified:** `.github/workflows/publish.yml` (new)
+
+### Step 5.4: Supply Chain Security Scanning
+* **Timestamp (UTC):** 2026-03-14T19:46:00Z
+* **Objective:** Automatically detect vulnerabilities in the dependency tree.
+* **Tasks:**
+  1. Add a `cargo audit` step to the CI pipeline or configure GitHub Dependabot for Cargo.
+* **Files modified:** `.github/workflows/ci.yml` or `.github/dependabot.yml`
+
+### Step 5.5: Eliminate Error Boilerplate with `thiserror` (Optional)
+* **Timestamp (UTC):** 2026-03-14T19:46:00Z
+* **Objective:** Standardize and simplify the `AgentFlowError` implementation.
+* **Tasks:**
+  1. Add `thiserror` to `Cargo.toml` dependencies.
+  2. Refactor `src/core/error.rs` to derive `thiserror::Error` for `AgentFlowError`.
+* **Files modified:** `Cargo.toml`, `src/core/error.rs`
+
+---
+
+- **Timestamp (UTC):** 2026-03-14T19:47:00Z
+- **Summary of change:** Appended Phase 5 implementation plan for production readiness.
+- **Files modified:** `PLAN.md`
+- **Exact reason:** User requested an implementation plan to make the project fit for production use as a Rust crate.
+- **Previous behavior:** `PLAN.md` ended at Phase 4.
+- **New behavior:** `PLAN.md` now includes Phase 5 detailing CI/CD, documentation, code quality, and security improvements.
+- **Rollback instructions:** Delete the Phase 5 section and this log entry from `PLAN.md`.

@@ -1,4 +1,4 @@
-use std::fmt;
+use thiserror::Error;
 
 /// Unified error type for all AgentFlow operations.
 ///
@@ -13,48 +13,42 @@ use std::fmt;
 /// let err = AgentFlowError::NotFound("prompt key missing".into());
 /// assert_eq!(err.to_string(), "Not found: prompt key missing");
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum AgentFlowError {
     /// A required key or resource was not found in the store or registry.
+    #[error("Not found: {0}")]
     NotFound(String),
+
     /// An operation timed out. Treated as **transient** by [`Agent::decide_result`]
     /// — it will be retried up to `max_retries` times.
     ///
     /// [`Agent::decide_result`]: crate::patterns::agent::Agent::decide_result
+    #[error("Timeout: {0}")]
     Timeout(String),
+
     /// A node produced an unrecoverable failure. Treated as **fatal** by
     /// [`Agent::decide_result`] — retries are skipped and the error is returned
     /// immediately.
     ///
     /// [`Agent::decide_result`]: crate::patterns::agent::Agent::decide_result
+    #[error("Node failure: {0}")]
     NodeFailure(String),
+
     /// [`Flow::run_safe`] or [`TypedFlow::run_safe`] reached the `max_steps` limit.
     ///
     /// [`Flow::run_safe`]: crate::core::flow::Flow::run_safe
     /// [`TypedFlow::run_safe`]: crate::core::typed_flow::TypedFlow::run_safe
+    #[error("Execution limit exceeded: {0}")]
     ExecutionLimitExceeded(String),
+
     /// A value in the store had an unexpected type (e.g. expected `i64`, found `String`).
+    #[error("Type mismatch: {0}")]
     TypeMismatch(String),
+
     /// Any other error that doesn't fit a specific variant above.
+    #[error("Error: {0}")]
     Custom(String),
 }
-
-impl fmt::Display for AgentFlowError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            AgentFlowError::NotFound(msg) => write!(f, "Not found: {}", msg),
-            AgentFlowError::Timeout(msg) => write!(f, "Timeout: {}", msg),
-            AgentFlowError::NodeFailure(msg) => write!(f, "Node failure: {}", msg),
-            AgentFlowError::ExecutionLimitExceeded(msg) => {
-                write!(f, "Execution limit exceeded: {}", msg)
-            }
-            AgentFlowError::TypeMismatch(msg) => write!(f, "Type mismatch: {}", msg),
-            AgentFlowError::Custom(msg) => write!(f, "Error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for AgentFlowError {}
 
 impl From<std::io::Error> for AgentFlowError {
     fn from(error: std::io::Error) -> Self {

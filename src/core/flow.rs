@@ -240,8 +240,11 @@ impl Flow {
     /// and returns. Use [`run_safe`](Self::run_safe) for strict error handling.
     #[instrument(name = "flow.run", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
     pub async fn run(&self, store: SharedStore) -> SharedStore {
-        // SAFETY: `safe = false` means the internal function always returns Ok(store).
-        self.run_internal(store, false).await.unwrap()
+        // When `safe = false`, `run_internal` always returns `Ok(store)`.
+        match self.run_internal(store, false).await {
+            Ok(s) => s,
+            Err(_) => unreachable!("run_internal with safe=false never returns Err"),
+        }
     }
 
     /// Execute the flow, returning `Err(AgentFlowError::ExecutionLimitExceeded)`
@@ -302,6 +305,7 @@ impl Default for Flow {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use crate::core::node::create_node;

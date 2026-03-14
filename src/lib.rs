@@ -1,5 +1,8 @@
 //! # AgentFlow
 //!
+#![warn(missing_docs)]
+#![warn(clippy::unwrap_used)]
+#![warn(clippy::expect_used)]
 //! A provider-agnostic, async-native Rust framework for building LLM agents,
 //! RAG pipelines, multi-agent workflows, and agentic orchestration systems.
 //!
