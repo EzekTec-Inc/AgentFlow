@@ -830,3 +830,22 @@ Replaced one-line comment with full section that:
 - **Previous behavior:** No unified pattern existed to leverage parsed `Skill` or `SkillTool` structs natively inside an orchestration flow graph.
 - **New behavior:** New components `SkillToolNode` and `SkillInjector` are provided. `SkillToolNode` executes a tool locally and writes output status to the store (`tool_stdout`, `tool_stderr`, `tool_exit_code`). `SkillInjector` pushes the prompt instruction component of a skill directly into the shared state as context.
 - **Rollback instructions:** Revert this commit using `git restore src/patterns/mod.rs && rm src/patterns/skill.rs`.
+
+## [2026-03-15T05:49:00Z] Minimal MCP client implementation plan
+- **Summary of change:** Added an implementation plan for a minimal `src/mcp/client.rs` to provide stdio-based MCP client support alongside the existing MCP server.
+- **Files modified:** `PLAN.md`
+- **Exact reason:** User requested that the implementation plan for a minimal MCP client be saved for later execution.
+- **Previous behavior:** The repository had MCP server support and an MCP client example, but no saved implementation plan describing how to add a reusable library-side MCP client.
+- **New behavior:** `PLAN.md` now records the intended MVP scope, API surface, implementation approach, integration points, and verification steps for a minimal AgentFlow MCP client.
+- **Implementation plan:**
+  1. Create `src/mcp/client.rs` for a minimal stdio JSON-RPC client matching AgentFlow's current newline-delimited MCP server behavior.
+  2. Keep the MVP limited to `initialize`, `tools/list`, and `tools/call`; exclude streaming, notifications, concurrent in-flight requests, and non-stdio transports.
+  3. Define a minimal public API centered on `McpClient`, with methods like `spawn_stdio`, `initialize`, `list_tools`, and `call_tool`.
+  4. Add minimal supporting data types such as `McpTool`, `McpCallResult`, and optional initialization metadata structs as needed.
+  5. Implement the client with `tokio::process::Command`, piped stdin/stdout, `BufReader`, sequential request IDs, and internal request/response helpers.
+  6. Validate JSON-RPC responses for `jsonrpc`, matching `id`, success `result`, and structured server-side `error` handling mapped into `AgentFlowError`.
+  7. Update `src/mcp/mod.rs` to export the new client module and `McpClient` alongside `McpServer`.
+  8. Refactor `examples/mcp_client.rs` to use the new AgentFlow-native `McpClient` instead of direct `rmcp` usage.
+  9. Run verification with `cargo check --all-features` and the MCP examples to confirm initialize/list/call behavior works end-to-end.
+  10. Update docs (`README.md`, `ARCHITECTURE.md`, and MCP example docs) to describe the new minimal client support and its current limitations.
+- **Rollback instructions:** Remove this plan entry from `PLAN.md` if the MCP client implementation direction changes.
