@@ -37,7 +37,7 @@ pub struct CrawlArtifact {
     pub title: String,
     pub content: String,
     pub timestamp: String,
-    pub status: u16,
+    pub status: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -365,6 +365,18 @@ async fn main() -> Result<(), AgentFlowError> {
     info!("Final workflow state: {:?}", final_state.state);
     if let Some(err) = &final_state.agent_error {
         error!("Completed with Agent Error: {:?}", err);
+    } else {
+        info!("--- Final Result ---");
+        if let Some(report) = &final_state.report {
+            info!(
+                "Report Generated:\n{}",
+                serde_json::to_string_pretty(report).unwrap_or_default()
+            );
+        }
+        info!(
+            "Artifacts Collected:\n{}",
+            serde_json::to_string_pretty(&final_state.artifacts).unwrap_or_default()
+        );
     }
 
     Ok(())

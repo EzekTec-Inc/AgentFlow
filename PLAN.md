@@ -812,3 +812,11 @@ Replaced one-line comment with full section that:
 - Changed all GPT models in `examples/mcp_client.rs` to use `gpt-4.1-mini`.
 
 - Fixed JSON parse error in `examples/mcp_client.rs` by updating the prompt for Agent 1 to clarify that `status` must be an integer HTTP status code.
+
+## [2026-03-14T21:11:00Z] Display final result in MCP client example
+- **Summary of change:** Modified the `examples/mcp_client.rs` file to print out the final report and collected artifacts when the workflow completes successfully.
+- **Files modified:** `examples/mcp_client.rs`
+- **Exact reason:** The user requested that the `mcp_client` example should display the contents of the final result, rather than just silently ending after printing the final state.
+- **Previous behavior:** The script printed the `final_state.state` and then exited with `Ok(())`.
+- **New behavior:** The script now checks for the generated report and artifacts in the final state and prints them using `serde_json::to_string_pretty`.
+- **Rollback instructions:** Revert this commit using `git checkout HEAD^ -- examples/mcp_client.rs`.
