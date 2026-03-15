@@ -1,13 +1,11 @@
 use agentflow::core::error::AgentFlowError;
 use agentflow::core::{create_typed_node, TypedFlow, TypedStore};
+use agentflow::mcp::{McpClient, McpClientOptions};
 use rig::client::CompletionClient;
 use rig::client::ProviderClient;
 use rig::completion::Prompt;
-use rmcp::transport::child_process::TokioChildProcess;
-use rmcp::ServiceExt;
 use serde::{Deserialize, Serialize};
 use std::env;
-use std::sync::Arc;
 
 use tracing::{error, info, Level};
 
@@ -93,16 +91,22 @@ async fn main() -> Result<(), AgentFlowError> {
         server_exe.set_extension("exe");
     }
 
-    let transport = TokioChildProcess::new(tokio::process::Command::new(server_exe))
-        .map_err(|e| AgentFlowError::Custom(e.to_string()))?;
-    let client = ().serve(transport).await.map_err(|e| AgentFlowError::Custom(format!("{:?}", e)))?;
-    let client = Arc::new(client);
+    let mut client = McpClient::spawn_stdio(tokio::process::Command::new(server_exe))?;
+    client
+        .initialize(McpClientOptions {
+            client_name: "agentflow-mcp-client-example".into(),
+            client_version: env!("CARGO_PKG_VERSION").into(),
+        })
+        .await?;
+
+    info!(
+        server_name = client.server_name().unwrap_or("unknown"),
+        server_version = client.server_version().unwrap_or("unknown"),
+        "Connected to MCP server"
+    );
 
     // Check available tools
-    let mcp_tools = client
-        .list_all_tools()
-        .await
-        .map_err(|e| AgentFlowError::Custom(format!("{:?}", e)))?;
+    let mcp_tools = client.list_tools().await?;
     info!("Discovered {} MCP tools", mcp_tools.len());
 
     let has_crawl = mcp_tools.iter().any(|t| t.name == "crawl_goa_url");
@@ -140,7 +144,7 @@ async fn main() -> Result<(), AgentFlowError> {
 
             if !has_crawl {
                 state.agent_error = Some(AgentError::CrawlFailed {
-                    url: "https://design.alberta.ca/foundations/brand-guidelines".into(),
+                    url: "https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md".into(),
                     reason: "Missing crawl tool".into(),
                     retry_hint: "Add crawl_goa_url tool to MCP".into(),
                 });
@@ -150,10 +154,13 @@ async fn main() -> Result<(), AgentFlowError> {
 
             let agent_1 = openai_client_crawl
                 .agent("gpt-4.1-mini")
-                .preamble("You are Agent 1: GoA Web Researcher. The user needs you to output exactly a JSON array containing one CrawlArtifact representing the Design System's Typography page. The JSON should be an array of objects with fields: url, title, content, timestamp, status (as an integer HTTP status code, e.g. 200). No markdown blocks, just raw JSON array.")
+                .preamble("You are Agent 1: Government of Alberta (GoA), Canada, UI Components Repository Researcher. The user needs you to output exactly a JSON array containing one CrawlArtifact representing the https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md repository. The JSON should be an array of objects with fields: url, title, content, timestamp, status (as an integer HTTP status code, e.g. 200). No markdown blocks, just raw JSON array.")
                 .build();
 
-            match agent_1.prompt("Extract GoA typography guidelines.").await {
+            match agent_1
+                .prompt("Extract information about the GovAlta UI components repository.")
+                .await
+            {
                 Ok(res) => {
                     let clean_res = res
                         .trim()
@@ -164,9 +171,8 @@ async fn main() -> Result<(), AgentFlowError> {
                         Ok(mut artifacts) => {
                             if artifacts.is_empty() {
                                 artifacts.push(CrawlArtifact {
-                                    url: "https://design.alberta.ca/foundations/brand-guidelines"
-                                        .into(),
-                                    title: "Typography Guidelines".into(),
+                                    url: "https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md".into(),
+                                    title: "GovAlta UI Components README".into(),
                                     content:
                                         "Use Open Sans for body text. Headings should be clear."
                                             .into(),
@@ -181,9 +187,8 @@ async fn main() -> Result<(), AgentFlowError> {
                         Err(e) => {
                             info!("JSON Parse Error: {}. Using deterministic mock payload.", e);
                             state.artifacts = vec![CrawlArtifact {
-                                url: "https://design.alberta.ca/foundations/brand-guidelines"
-                                    .into(),
-                                title: "Typography Guidelines".into(),
+                                url: "https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md".into(),
+                                title: "GovAlta UI Components README".into(),
                                 content: "Use Open Sans for body text. Headings should be clear."
                                     .into(),
                                 timestamp: chrono::Utc::now().to_rfc3339(),
@@ -197,8 +202,8 @@ async fn main() -> Result<(), AgentFlowError> {
                 Err(e) => {
                     info!("LLM Prompt failed (likely no API key): {}. Using deterministic mock payload.", e);
                     state.artifacts = vec![CrawlArtifact {
-                        url: "https://design.alberta.ca/foundations/brand-guidelines".into(),
-                        title: "Typography Guidelines".into(),
+                        url: "https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md".into(),
+                        title: "GovAlta UI Components README".into(),
                         content: "Use Open Sans for body text. Headings should be clear.".into(),
                         timestamp: chrono::Utc::now().to_rfc3339(),
                         status: 200,
@@ -220,7 +225,7 @@ async fn main() -> Result<(), AgentFlowError> {
             info!("--- [Agent 2] Research Evaluator ---");
 
             let agent_2 = openai_client_review
-                .agent("gpt-4.1-mini")
+                .agent("gpt-5.1")
                 .preamble("You are Agent 2: Research Evaluator. Review the provided JSON artifact. If it looks correct, output a JSON array with one object: {\"is_dummy\":false, \"is_error\":false, \"reason\":\"Looks good\", \"failed_url\":\"\", \"retry_guidance\":\"\"}.")
                 .build();
 
@@ -291,7 +296,7 @@ async fn main() -> Result<(), AgentFlowError> {
             }
 
             let agent_3 = openai_client_report
-                .agent("gpt-4.1-mini")
+                .agent("gpt-5.4")
                 .preamble("You are Agent 3: Report Synthesizer. Output exactly a JSON object: {\"terminal_text\":\"Done!\", \"pdf_path\":\"report.pdf\", \"markdown_path\":\"report.md\"}")
                 .build();
 
