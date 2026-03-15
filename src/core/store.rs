@@ -171,11 +171,7 @@ impl Store {
                 key
             ))),
             Some(v) => v.as_str().map(|s| s.to_string()).ok_or_else(|| {
-                AgentFlowError::TypeMismatch(format!(
-                    "Key '{}' is not a string (found {})",
-                    key,
-                    v
-                ))
+                AgentFlowError::TypeMismatch(format!("Key '{}' is not a string (found {})", key, v))
             }),
         }
     }
@@ -191,11 +187,7 @@ impl Store {
                 key
             ))),
             Some(v) => v.as_i64().ok_or_else(|| {
-                AgentFlowError::TypeMismatch(format!(
-                    "Key '{}' is not an i64 (found {})",
-                    key,
-                    v
-                ))
+                AgentFlowError::TypeMismatch(format!("Key '{}' is not an i64 (found {})", key, v))
             }),
         }
     }
@@ -211,11 +203,7 @@ impl Store {
                 key
             ))),
             Some(v) => v.as_f64().ok_or_else(|| {
-                AgentFlowError::TypeMismatch(format!(
-                    "Key '{}' is not an f64 (found {})",
-                    key,
-                    v
-                ))
+                AgentFlowError::TypeMismatch(format!("Key '{}' is not an f64 (found {})", key, v))
             }),
         }
     }
@@ -231,11 +219,7 @@ impl Store {
                 key
             ))),
             Some(v) => v.as_bool().ok_or_else(|| {
-                AgentFlowError::TypeMismatch(format!(
-                    "Key '{}' is not a bool (found {})",
-                    key,
-                    v
-                ))
+                AgentFlowError::TypeMismatch(format!("Key '{}' is not a bool (found {})", key, v))
             }),
         }
     }

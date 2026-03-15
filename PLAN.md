@@ -798,3 +798,17 @@ Replaced one-line comment with full section that:
 - **Previous behavior:** URL was `https://design.alberta.ca` without the trailing slash.
 - **New behavior:** URL is `https://design.alberta.ca/` with the trailing slash.
 - **Rollback instructions:** Run `git checkout -- examples/` or edit files to remove the trailing slash.
+- **2026-03-14T23:45:00Z**: Refactored `examples/mcp_client.rs` to use `AgentFlow`'s `TypedFlow` and `create_typed_node` for agent orchestration and flow management.
+  - **Reason**: The existing `mcp_client.rs` was using a manual `loop { match state.next_action { ... } }` construct instead of leveraging the library's built-in `TypedFlow` orchestration primitives.
+  - **Previous Behavior**: Hardcoded `loop` over an enum state block.
+  - **New Behavior**: Defines `Crawl`, `Review`, and `Report` nodes via `create_typed_node` and wires them together via `flow.add_transition`, running with `flow.run(store)`.
+  - **Rollback Instructions**: `git checkout main -- examples/mcp_client.rs`
+
+### Completed
+- Refactored `examples/mcp_client.rs` to replace the hardcoded state machine loop with `agentflow::core::TypedFlow`, `TypedStore`, and `create_typed_node` for structured orchestration.
+- Verified that all states and transitions in `examples/mcp_client.rs` map cleanly to flow nodes and the routing logic.
+
+### Completed
+- Changed all GPT models in `examples/mcp_client.rs` to use `gpt-4.1-mini`.
+
+- Fixed JSON parse error in `examples/mcp_client.rs` by updating the prompt for Agent 1 to clarify that `status` must be an integer HTTP status code.

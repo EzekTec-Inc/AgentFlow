@@ -152,10 +152,7 @@ impl<N> Agent<N> {
     ///
     /// [`decide_result`]: Agent::decide_result
     #[instrument(name = "agent.run_result", skip(self, input), fields(max_retries = self.max_retries))]
-    pub async fn run_result(
-        &self,
-        input: SharedStore,
-    ) -> Result<SharedStore, AgentFlowError>
+    pub async fn run_result(&self, input: SharedStore) -> Result<SharedStore, AgentFlowError>
     where
         N: NodeResult<SharedStore, SharedStore> + Clone,
     {

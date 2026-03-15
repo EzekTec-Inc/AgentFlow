@@ -426,7 +426,8 @@ where
                     val
                 } else if let Some(fallback_fn) = fallback {
                     let default_err = AgentFlowError::NodeFailure("no error recorded".into());
-                    let _fallback_store = fallback_fn(&input, &prep_res, last_err.as_ref().unwrap_or(&default_err));
+                    let _fallback_store =
+                        fallback_fn(&input, &prep_res, last_err.as_ref().unwrap_or(&default_err));
                     serde_json::json!({"error": "fallback triggered"})
                 } else {
                     serde_json::json!({"error": format!("Node failed after {} retries: {:?}", max_retries, last_err)})

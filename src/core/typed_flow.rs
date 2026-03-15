@@ -337,7 +337,10 @@ mod tests {
         flow.add_transition("A", |_| Some("B".to_string()));
         flow.add_transition("B", |_| Some("A".to_string()));
 
-        let store = TypedStore::new(TestState { count: 0, messages: vec![] });
+        let store = TypedStore::new(TestState {
+            count: 0,
+            messages: vec![],
+        });
         let final_store = flow.run(store).await;
 
         assert!(

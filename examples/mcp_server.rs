@@ -22,10 +22,9 @@ You are a tool server providing capabilities for the GoA research pipeline.
 "#;
     let skill = Skill::parse(skill_content)?;
 
-    let server = McpServer::new("GoA_Research_Server", "0.2.0")
-        .register_skill(skill);
+    let server = McpServer::new("GoA_Research_Server", "0.2.0").register_skill(skill);
 
     server.run().await?;
-    
+
     Ok(())
 }
