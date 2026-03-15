@@ -16,6 +16,9 @@ pub mod rpi;
 pub mod structured_output;
 /// Linear workflow pattern.
 pub mod workflow;
+#[cfg(feature = "skills")]
+/// Skill execution pattern.
+pub mod skill;
 
 // Re-export all patterns for convenience
 pub use agent::Agent;
@@ -26,3 +29,6 @@ pub use rag::Rag;
 pub use rpi::RpiWorkflow;
 pub use structured_output::StructuredOutput;
 pub use workflow::Workflow;
+
+#[cfg(feature = "skills")]
+pub use skill::{SkillToolNode, SkillInjector};

@@ -820,3 +820,13 @@ Replaced one-line comment with full section that:
 - **Previous behavior:** The script printed the `final_state.state` and then exited with `Ok(())`.
 - **New behavior:** The script now checks for the generated report and artifacts in the final state and prints them using `serde_json::to_string_pretty`.
 - **Rollback instructions:** Revert this commit using `git checkout HEAD^ -- examples/mcp_client.rs`.
+
+## [2026-03-14T21:35:00Z] Create skill pattern
+- **Summary of change:** Implemented `SkillToolNode` and `SkillInjector` in `src/patterns/skill.rs`, exposing them under `src/patterns/mod.rs` (conditional on the `skills` feature).
+- **Files modified:**
+  - `src/patterns/skill.rs` (created)
+  - `src/patterns/mod.rs` (modified)
+- **Exact reason:** The user requested an investigation and ascertainment on how to create a pattern in the `patterns` directory specifically for handling skills.
+- **Previous behavior:** No unified pattern existed to leverage parsed `Skill` or `SkillTool` structs natively inside an orchestration flow graph.
+- **New behavior:** New components `SkillToolNode` and `SkillInjector` are provided. `SkillToolNode` executes a tool locally and writes output status to the store (`tool_stdout`, `tool_stderr`, `tool_exit_code`). `SkillInjector` pushes the prompt instruction component of a skill directly into the shared state as context.
+- **Rollback instructions:** Revert this commit using `git restore src/patterns/mod.rs && rm src/patterns/skill.rs`.
