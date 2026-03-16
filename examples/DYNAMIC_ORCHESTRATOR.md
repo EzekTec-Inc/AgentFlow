@@ -22,6 +22,12 @@ Demonstrates a fully dynamic, TOML-configured orchestrator that reads its agent 
 **Requires:** `OPENAI_API_KEY`
 **Run with:** `cargo run --example dynamic-orchestrator`
 
+On first run, the example checks for its runtime config file and writes a
+default one if it is missing. Update the generated TOML file to change models,
+providers, prompts, or output keys without recompiling the Rust example.
+
+Runtime config path: `examples/agents.toml`
+
 ---
 
 ## TOML Schema (`examples/agents.toml`)

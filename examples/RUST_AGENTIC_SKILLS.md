@@ -22,6 +22,12 @@ Demonstrates AgentFlow's `skills` feature — YAML-defined agent personas, instr
 **Requires:** `OPENAI_API_KEY`, `--features skills`
 **Run with:** `cargo run --example rust-agentic-skills --features skills`
 
+This example loads skill definitions from markdown files with YAML front matter.
+You can change tool wiring and skill metadata by editing the skill files in
+`examples/` without modifying the Rust example source.
+
+Primary skill input files: `examples/SKILL_*.md`
+
 ---
 
 ## Skill YAML Schema

@@ -849,3 +849,15 @@ Replaced one-line comment with full section that:
   9. Run verification with `cargo check --all-features` and the MCP examples to confirm initialize/list/call behavior works end-to-end.
   10. Update docs (`README.md`, `ARCHITECTURE.md`, and MCP example docs) to describe the new minimal client support and its current limitations.
 - **Rollback instructions:** Remove this plan entry from `PLAN.md` if the MCP client implementation direction changes.
+
+## 2026-03-16T00:55:29Z
+
+- **Summary:** Updated top-level and example documentation with verified run commands, feature requirements, and usage notes for examples.
+- **Files modified:** `README.md`, `ARCHITECTURE.md`, `examples/MCP_SERVER.md`, `examples/TYPED_FLOW.md`, `examples/DYNAMIC_ORCHESTRATOR.md`, `examples/RUST_AGENTIC_SKILLS.md`, `examples/DOCUMENT_PROCESSING.md`, `PLAN.md`
+- **Exact reason:** The requested documentation pass was limited to docs-only changes focused on usage guidance, and the repo needed verified instructions for Cargo example names, feature-gated examples, and MCP example setup.
+- **Previous behaviour:** Documentation covered the architecture and examples, but top-level usage guidance did not clearly explain Cargo example naming, omitted the `mcp-server` and `mcp-client` examples from the README table, and some example docs lacked concrete setup notes tied to their actual runtime inputs.
+- **New behaviour:** Documentation now includes verified guidance for running examples, required feature flags, MCP server/client setup, and the runtime config or skill files used by selected examples.
+- **Rollback:** Revert the documentation edits in the listed files and remove this PLAN.md entry.
+
+- Added template substitution support in `src/mcp/server.rs` to allow mapping of dynamic `params.arguments` from the client to the server tool's `args`.
+- Updated `examples/mcp_server.rs` to use `{{url}}`, `{{markdown}}`, and `{{output_path}}` placeholders instead of positional or mocked arguments.

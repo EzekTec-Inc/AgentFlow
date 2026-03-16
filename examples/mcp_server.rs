@@ -12,11 +12,11 @@ tools:
   - name: crawl_goa_url
     description: Fetches content from a Government of Alberta Design System URL (e.g., https://design.alberta.ca/)
     command: curl
-    args: ["-sL"]
+    args: ["-sL", "{{url}}"]
   - name: generate_pdf
     description: Generates a PDF report from markdown content. Pass the content as the first argument.
     command: bash
-    args: ["-c", "cat << 'EOF' > report.md\n$1\nEOF\necho '% GoA Design System Report' > report.pdf && echo 'PDF generation mocked successfully.'"]
+    args: ["-c", "cat << 'EOF' > {{output_path}}.md\n{{markdown}}\nEOF\necho '% GoA Design System Report' > {{output_path}} && echo 'PDF generation mocked successfully.'"]
 ---
 You are a tool server providing capabilities for the GoA research pipeline.
 "#;

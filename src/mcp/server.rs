@@ -109,6 +109,9 @@ impl McpServer {
                                 .and_then(|p| p.get("name"))
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("");
+                            let arguments = params
+                                .and_then(|p| p.get("arguments"))
+                                .and_then(|v| v.as_object());
 
                             // Find the matching SkillTool across all registered skills
                             let matched_tool = self.skills.iter().find_map(|skill| {
@@ -119,8 +122,23 @@ impl McpServer {
                                 Some(tool) => {
                                     debug!(tool = %tool.name, "McpServer executing tool");
 
+                                    let mut final_args = Vec::new();
+                                    for arg in &tool.args {
+                                        let mut modified_arg = arg.clone();
+                                        if let Some(args_map) = arguments {
+                                            for (k, v) in args_map {
+                                                let val_str = match v {
+                                                    serde_json::Value::String(s) => s.clone(),
+                                                    other => other.to_string(),
+                                                };
+                                                modified_arg = modified_arg.replace(&format!("{{{{{}}}}}", k), &val_str);
+                                            }
+                                        }
+                                        final_args.push(modified_arg);
+                                    }
+
                                     let exec = tokio::process::Command::new(&tool.command)
-                                        .args(&tool.args)
+                                        .args(&final_args)
                                         .output();
 
                                     match tokio::time::timeout(MCP_TOOL_TIMEOUT, exec).await {

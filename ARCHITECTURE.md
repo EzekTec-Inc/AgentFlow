@@ -18,6 +18,7 @@
 9. [Feature Flags](#feature-flags)
 10. [Concurrency Rules](#concurrency-rules)
 11. [Composability Diagram](#composability-diagram)
+12. [Running Examples](#running-examples)
 
 ---
 
@@ -410,4 +411,32 @@ graph TD
     Agent --> RpiWorkflow
     Workflow --> MCP
     MultiAgent --> MCP
+```
+
+---
+
+## Running Examples
+
+Examples are executed through Cargo's example targets, which use hyphenated names
+even when the source files in `examples/` use snake_case filenames.
+
+Examples:
+
+- `examples/async_agent.rs` → `cargo run --example async-agent`
+- `examples/orchestrator_multi_agent.rs` → `cargo run --example orchestrator-multi-agent`
+- `examples/orchestrator_with_tools.rs` → `cargo run --example orchestrator-with-tools`
+- `examples/plan_and_execute.rs` → `cargo run --example plan-and-execute`
+
+Feature-gated examples:
+
+- `rust-agentic-skills` and `document-processing` require `--features skills`
+- `mcp-server` requires `--features "mcp skills"`
+- `mcp-client` requires `--features mcp`
+
+The `mcp-client` example spawns the `mcp-server` example binary by name. Build
+the server binary first so the executable is available next to the client
+binary:
+
+```bash
+cargo build --example mcp-server --features "mcp skills"
 ```

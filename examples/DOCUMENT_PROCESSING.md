@@ -21,6 +21,12 @@ Implements a document processing pipeline using AgentFlow's `skills` feature. De
 **Requires:** `OPENAI_API_KEY`, `--features skills`
 **Run with:** `cargo run --example document-processing --features skills`
 
+This example depends on the skill definition stored in
+`examples/SKILL_DOC_PROCESS.md`. Update that file to change the configured tool
+commands or conversion steps without recompiling the example.
+
+Primary skill input file: `examples/SKILL_DOC_PROCESS.md`
+
 ---
 
 ## Implementation Architecture

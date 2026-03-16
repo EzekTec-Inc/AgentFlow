@@ -21,6 +21,10 @@ Demonstrates `TypedFlow<T>` — a compile-time typed state machine where the sta
 **Requires:** No API key needed for the demo; add LLM calls inside typed nodes for real use.
 **Run with:** `cargo run --example typed-flow`
 
+This is a self-contained example. It does not require any model provider
+configuration and is the quickest way to verify `TypedFlow<T>` behavior without
+external services.
+
 ---
 
 ## Implementation Architecture

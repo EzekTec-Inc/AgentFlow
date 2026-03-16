@@ -189,6 +189,29 @@ flowchart LR
 
 All examples live in [`examples/`](./examples/). Run with `cargo run --example <name>`.
 
+### Example naming
+
+Example source files in `examples/` use snake_case filenames, but Cargo example
+names are the hyphenated names declared in `Cargo.toml`. For example:
+
+- `examples/async_agent.rs` → `cargo run --example async-agent`
+- `examples/typed_flow.rs` → `cargo run --example typed-flow`
+- `examples/plan_and_execute.rs` → `cargo run --example plan-and-execute`
+
+### Common run requirements
+
+- Most LLM-backed examples require `OPENAI_API_KEY`.
+- `rust-agentic-skills` and `document-processing` require `--features skills`.
+- `mcp-server` requires `--features "mcp skills"`.
+- `mcp-client` requires `--features mcp` and expects the `mcp-server`
+  example binary to be available.
+
+Build the paired MCP server binary first:
+
+```bash
+cargo build --example mcp-server --features "mcp skills"
+```
+
 | Example | Description |
 |---------|-------------|
 | `agent` | Single LLM agent with retry |
@@ -211,6 +234,8 @@ All examples live in [`examples/`](./examples/). Run with `cargo run --example <
 | `rpi` | Research → Plan → Implement → Verify loop |
 | `rust-agentic-skills` | YAML skill files + RPI workflow (`--features skills`) |
 | `document-processing` | Document pipeline with skill nodes (`--features skills`) |
+| `mcp-server` | MCP stdio server exposing skill-backed tools (`--features "mcp skills"`) |
+| `mcp-client` | TypedFlow client that spawns and calls the `mcp-server` example (`--features mcp`) |
 
 ### Environment setup
 
