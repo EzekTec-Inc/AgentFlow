@@ -1,12 +1,14 @@
 use agentflow::core::error::AgentFlowError;
 use agentflow::core::{create_typed_node, TypedFlow, TypedStore};
-use agentflow::mcp::{McpClient, McpClientOptions};
+use agentflow::mcp::{McpCallResult, McpClient, McpClientOptions};
 use rig::client::CompletionClient;
 use rig::client::ProviderClient;
 use rig::completion::Prompt;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::env;
-
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::{error, info, Level};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -54,6 +56,19 @@ pub struct ReportArtifact {
     pub markdown_path: String,
 }
 
+fn mcp_text_content(result: &McpCallResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|item| {
+            item.get("text")
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum AgentError {
     CrawlFailed {
@@ -82,9 +97,8 @@ pub struct AppState {
 async fn main() -> Result<(), AgentFlowError> {
     tracing_subscriber::fmt().with_max_level(Level::INFO).init();
 
-    info!("Starting AgentFlow Dynamic Orchestrator (GoA Web Research) using TypedFlow");
+    info!("Starting AgentFlow Dynamic Orchestrator (GoA README Research) using TypedFlow");
 
-    // Start MCP Server
     let mut server_exe = env::current_exe().map_err(|e| AgentFlowError::Custom(e.to_string()))?;
     server_exe.set_file_name("mcp-server");
     if cfg!(windows) {
@@ -105,14 +119,13 @@ async fn main() -> Result<(), AgentFlowError> {
         "Connected to MCP server"
     );
 
-    // Check available tools
     let mcp_tools = client.list_tools().await?;
     info!("Discovered {} MCP tools", mcp_tools.len());
 
     let has_crawl = mcp_tools.iter().any(|t| t.name == "crawl_goa_url");
     let has_pdf = mcp_tools.iter().any(|t| t.name == "generate_pdf");
+    let mcp_client = Arc::new(Mutex::new(client));
 
-    // Fallback to simple deterministic response if API keys aren't set
     let openai_client = rig::providers::openai::Client::from_env();
 
     let initial_state = AppState {
@@ -127,10 +140,11 @@ async fn main() -> Result<(), AgentFlowError> {
 
     let mut flow = TypedFlow::<AppState>::new().with_max_steps(10);
 
-    // Node 1: Crawl
     let openai_client_crawl = openai_client.clone();
+    let mcp_client_crawl = Arc::clone(&mcp_client);
     let crawl_node = create_typed_node(move |store: TypedStore<AppState>| {
         let openai_client_crawl = openai_client_crawl.clone();
+        let mcp_client_crawl = Arc::clone(&mcp_client_crawl);
         async move {
             let mut state = store.inner.write().await;
             info!("--- [Agent 1] Web Researcher & Crawler ---");
@@ -142,81 +156,99 @@ async fn main() -> Result<(), AgentFlowError> {
                 return store.clone();
             }
 
+            let readme_url =
+                "https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md";
+
             if !has_crawl {
                 state.agent_error = Some(AgentError::CrawlFailed {
-                    url: "https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md".into(),
-                    reason: "Missing crawl tool".into(),
-                    retry_hint: "Add crawl_goa_url tool to MCP".into(),
+                    url: readme_url.into(),
+                    reason: "Missing crawl_goa_url tool".into(),
+                    retry_hint: "Add crawl_goa_url to the MCP server".into(),
                 });
+                state.state = StoreState::Failed;
                 state.next_action = Action::Failed;
                 return store.clone();
             }
 
-            let agent_1 = openai_client_crawl
-                .agent("gpt-4.1-mini")
-                .preamble("You are Agent 1: Government of Alberta (GoA), Canada, UI Components Repository Researcher. The user needs you to output exactly a JSON array containing one CrawlArtifact representing the https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md repository. The JSON should be an array of objects with fields: url, title, content, timestamp, status (as an integer HTTP status code, e.g. 200). No markdown blocks, just raw JSON array.")
-                .build();
+            let crawl_result = {
+                let mut client = mcp_client_crawl.lock().await;
+                client
+                    .call_tool("crawl_goa_url", json!({ "url": readme_url }))
+                    .await
+            };
 
-            match agent_1
-                .prompt("Extract information about the GovAlta UI components repository.")
-                .await
-            {
-                Ok(res) => {
-                    let clean_res = res
-                        .trim()
-                        .trim_start_matches("```json")
-                        .trim_end_matches("```")
-                        .trim();
-                    match serde_json::from_str::<Vec<CrawlArtifact>>(clean_res) {
-                        Ok(mut artifacts) => {
-                            if artifacts.is_empty() {
-                                artifacts.push(CrawlArtifact {
-                                    url: "https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md".into(),
-                                    title: "GovAlta UI Components README".into(),
-                                    content:
-                                        "Use Open Sans for body text. Headings should be clear."
-                                            .into(),
-                                    timestamp: chrono::Utc::now().to_rfc3339(),
-                                    status: 200,
-                                });
-                            }
-                            state.artifacts = artifacts;
-                            state.state = StoreState::Crawled;
-                            state.next_action = Action::ReviewCrawlResults;
-                        }
-                        Err(e) => {
-                            info!("JSON Parse Error: {}. Using deterministic mock payload.", e);
-                            state.artifacts = vec![CrawlArtifact {
-                                url: "https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md".into(),
-                                title: "GovAlta UI Components README".into(),
-                                content: "Use Open Sans for body text. Headings should be clear."
-                                    .into(),
-                                timestamp: chrono::Utc::now().to_rfc3339(),
-                                status: 200,
-                            }];
-                            state.state = StoreState::Crawled;
-                            state.next_action = Action::ReviewCrawlResults;
-                        }
-                    }
-                }
-                Err(e) => {
-                    info!("LLM Prompt failed (likely no API key): {}. Using deterministic mock payload.", e);
-                    state.artifacts = vec![CrawlArtifact {
-                        url: "https://raw.githubusercontent.com/GovAlta/ui-components/refs/heads/dev/README.md".into(),
+            match crawl_result {
+                Ok(result) => {
+                    let crawled_text = mcp_text_content(&result);
+                    let fallback_artifact = CrawlArtifact {
+                        url: readme_url.into(),
                         title: "GovAlta UI Components README".into(),
-                        content: "Use Open Sans for body text. Headings should be clear.".into(),
+                        content: if crawled_text.trim().is_empty() {
+                            "README crawl returned no text.".into()
+                        } else {
+                            crawled_text
+                        },
                         timestamp: chrono::Utc::now().to_rfc3339(),
                         status: 200,
-                    }];
+                    };
+
+                    let agent_1 = openai_client_crawl
+                        .agent("gpt-4.1-mini")
+                        .preamble("You are Agent 1: Government of Alberta (GoA), Canada, UI Components README Researcher. Output exactly a JSON array containing one CrawlArtifact for the supplied README. Use fields: url, title, content, timestamp, status. Keep the content grounded in the crawled README text. No markdown blocks, just raw JSON array.")
+                        .build();
+
+                    match agent_1
+                        .prompt(format!(
+                            "Convert this crawled README into a single CrawlArtifact JSON array. URL: {readme_url}\nTimestamp: {}\nStatus: {}\nREADME text:\n{}",
+                            fallback_artifact.timestamp,
+                            fallback_artifact.status,
+                            fallback_artifact.content
+                        ))
+                        .await
+                    {
+                        Ok(res) => {
+                            let clean_res = res
+                                .trim()
+                                .trim_start_matches("```json")
+                                .trim_end_matches("```")
+                                .trim();
+                            match serde_json::from_str::<Vec<CrawlArtifact>>(clean_res) {
+                                Ok(mut artifacts) => {
+                                    if artifacts.is_empty() {
+                                        artifacts.push(fallback_artifact.clone());
+                                    }
+                                    state.artifacts = artifacts;
+                                }
+                                Err(e) => {
+                                    info!("JSON parse error: {}. Using MCP crawl payload.", e);
+                                    state.artifacts = vec![fallback_artifact];
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            info!("LLM prompt failed: {}. Using MCP crawl payload.", e);
+                            state.artifacts = vec![fallback_artifact];
+                        }
+                    }
+
                     state.state = StoreState::Crawled;
                     state.next_action = Action::ReviewCrawlResults;
                 }
+                Err(e) => {
+                    state.agent_error = Some(AgentError::CrawlFailed {
+                        url: readme_url.into(),
+                        reason: format!("crawl_goa_url failed: {e}"),
+                        retry_hint: "Verify the MCP server is reachable and the crawl tool succeeds.".into(),
+                    });
+                    state.state = StoreState::Failed;
+                    state.next_action = Action::Failed;
+                }
             }
+
             store.clone()
         }
     });
 
-    // Node 2: Review
     let openai_client_review = openai_client.clone();
     let review_node = create_typed_node(move |store: TypedStore<AppState>| {
         let openai_client_review = openai_client_review.clone();
@@ -259,17 +291,28 @@ async fn main() -> Result<(), AgentFlowError> {
                             }
                         }
                         Err(e) => {
-                            info!(
-                                "Evaluator JSON Parse Error: {}. Proceeding to WriteReport.",
-                                e
-                            );
+                            info!("Review JSON parse error: {}. Using fallback verdict.", e);
+                            state.review_findings = vec![ReviewFinding {
+                                is_dummy: false,
+                                is_error: false,
+                                reason: "Looks valid (fallback)".into(),
+                                failed_url: "".into(),
+                                retry_guidance: "".into(),
+                            }];
                             state.state = StoreState::ReviewedOk;
                             state.next_action = Action::WriteReport;
                         }
                     }
                 }
                 Err(e) => {
-                    info!("Evaluator LLM Prompt failed: {}. Proceeding.", e);
+                    info!("Review LLM failed: {}. Using fallback verdict.", e);
+                    state.review_findings = vec![ReviewFinding {
+                        is_dummy: false,
+                        is_error: false,
+                        reason: "Looks valid (fallback)".into(),
+                        failed_url: "".into(),
+                        retry_guidance: "".into(),
+                    }];
                     state.state = StoreState::ReviewedOk;
                     state.next_action = Action::WriteReport;
                 }
@@ -278,10 +321,9 @@ async fn main() -> Result<(), AgentFlowError> {
         }
     });
 
-    // Node 3: Report
-    let openai_client_report = openai_client.clone();
+    let mcp_client_report = Arc::clone(&mcp_client);
     let report_node = create_typed_node(move |store: TypedStore<AppState>| {
-        let openai_client_report = openai_client_report.clone();
+        let mcp_client_report = Arc::clone(&mcp_client_report);
         async move {
             let mut state = store.inner.write().await;
             info!("--- [Agent 3] Report Synthesizer ---");
@@ -291,60 +333,64 @@ async fn main() -> Result<(), AgentFlowError> {
                     reason: "Missing generate_pdf tool".into(),
                     missing_tool: "generate_pdf".into(),
                 });
+                state.state = StoreState::Failed;
                 state.next_action = Action::Failed;
                 return store.clone();
             }
 
-            let agent_3 = openai_client_report
-                .agent("gpt-5.4")
-                .preamble("You are Agent 3: Report Synthesizer. Output exactly a JSON object: {\"terminal_text\":\"Done!\", \"pdf_path\":\"report.pdf\", \"markdown_path\":\"report.md\"}")
-                .build();
+            let report_markdown = if let Some(first) = state.artifacts.first() {
+                format!(
+                    "# GovAlta UI Components README review\n\nURL: {}\nStatus: {}\nTimestamp: {}\n\n## Summary\n{}",
+                    first.url, first.status, first.timestamp, first.content
+                )
+            } else {
+                "# GovAlta UI Components README review\n\nNo crawl artifacts available.".into()
+            };
 
-            let payload = serde_json::to_string(&state.artifacts).unwrap_or_default();
-            match agent_3
-                .prompt(&format!("Synthesize report for: {}", payload))
-                .await
-            {
-                Ok(res) => {
-                    let clean_res = res
-                        .trim()
-                        .trim_start_matches("```json")
-                        .trim_end_matches("```")
-                        .trim();
-                    match serde_json::from_str::<ReportArtifact>(clean_res) {
-                        Ok(report) => {
-                            state.report = Some(report);
-                            state.state = StoreState::ReportWritten;
-                            state.next_action = Action::Complete;
-                        }
-                        Err(e) => {
-                            info!("Report JSON Parse Error: {}. Using fallback.", e);
-                            state.report = Some(ReportArtifact {
-                                terminal_text: "Synthesis complete (fallback)".into(),
-                                pdf_path: "report.pdf".into(),
-                                markdown_path: "report.md".into(),
-                            });
-                            state.state = StoreState::ReportWritten;
-                            state.next_action = Action::Complete;
-                        }
-                    }
-                }
-                Err(e) => {
-                    info!("Report LLM failed: {}. Using fallback.", e);
+            let pdf_path = "/tmp/goa-ui-components-review.pdf".to_string();
+            let markdown_path = "/tmp/goa-ui-components-review.md".to_string();
+
+            let tool_result = {
+                let mut client = mcp_client_report.lock().await;
+                client
+                    .call_tool(
+                        "generate_pdf",
+                        json!({
+                            "markdown": report_markdown,
+                            "output_path": pdf_path,
+                        }),
+                    )
+                    .await
+            };
+
+            match tool_result {
+                Ok(result) => {
+                    let terminal_text = mcp_text_content(&result);
                     state.report = Some(ReportArtifact {
-                        terminal_text: "Synthesis complete (fallback)".into(),
-                        pdf_path: "report.pdf".into(),
-                        markdown_path: "report.md".into(),
+                        terminal_text: if terminal_text.trim().is_empty() {
+                            "generate_pdf completed without terminal output".into()
+                        } else {
+                            terminal_text
+                        },
+                        pdf_path,
+                        markdown_path,
                     });
                     state.state = StoreState::ReportWritten;
                     state.next_action = Action::Complete;
+                }
+                Err(e) => {
+                    state.agent_error = Some(AgentError::ReportFailed {
+                        reason: format!("generate_pdf failed: {e}"),
+                        missing_tool: "generate_pdf".into(),
+                    });
+                    state.state = StoreState::Failed;
+                    state.next_action = Action::Failed;
                 }
             }
             store.clone()
         }
     });
 
-    // Build the Flow structure
     flow.add_node("Crawl", crawl_node);
     flow.add_node("Review", review_node);
     flow.add_node("Report", report_node);
@@ -364,9 +410,9 @@ async fn main() -> Result<(), AgentFlowError> {
     flow.add_transition("Report", |_state: &AppState| None);
 
     let store = TypedStore::new(initial_state);
-
     let final_store = flow.run(store).await;
     let final_state = final_store.inner.read().await;
+
     info!("Final workflow state: {:?}", final_state.state);
     if let Some(err) = &final_state.agent_error {
         error!("Completed with Agent Error: {:?}", err);
