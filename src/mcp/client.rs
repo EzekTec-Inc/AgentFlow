@@ -1,9 +1,13 @@
 use crate::core::error::AgentFlowError;
+use rmcp::{
+    model::{CallToolRequestParam, ClientInfo, Content, Tool},
+    service::RunningService,
+    transport::child_process::TokioChildProcess,
+    RoleClient, ServiceExt,
+};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use std::process::Stdio;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
-use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use serde_json::Value;
+use tokio::process::Command;
 
 /// Options used to initialize an [`McpClient`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,260 +44,128 @@ pub struct McpTool {
 pub struct McpCallResult {
     /// Structured MCP content entries.
     pub content: Vec<Value>,
-    /// Captured stderr, if any.
-    #[serde(default)]
-    pub stderr: String,
-    /// Process exit code, if the server supplied one.
-    #[serde(rename = "exitCode")]
-    pub exit_code: Option<i64>,
+    /// Whether the remote server marked the result as an error.
+    #[serde(rename = "isError")]
+    pub is_error: Option<bool>,
 }
 
-/// Sequential stdio MCP client for the current AgentFlow newline-delimited server.
+/// rmcp-backed MCP client supporting stdio child processes and streamable HTTP.
 pub struct McpClient {
-    child: Child,
-    stdin: ChildStdin,
-    stdout_lines: Lines<BufReader<ChildStdout>>,
-    next_id: u64,
-    initialized: bool,
+    service: RunningService<RoleClient, ClientInfo>,
     server_name: Option<String>,
     server_version: Option<String>,
 }
 
 impl McpClient {
-    /// Spawn a stdio MCP server process with piped stdin/stdout.
-    pub fn spawn_stdio(mut command: Command) -> Result<Self, AgentFlowError> {
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
-
-        let mut child = command.spawn().map_err(|e| {
-            AgentFlowError::Custom(format!("Failed to spawn MCP server process: {e}"))
-        })?;
-
-        let stdin = child.stdin.take().ok_or_else(|| {
-            AgentFlowError::Custom("Spawned MCP process did not expose stdin".to_string())
-        })?;
-        let stdout = child.stdout.take().ok_or_else(|| {
-            AgentFlowError::Custom("Spawned MCP process did not expose stdout".to_string())
-        })?;
-
-        Ok(Self {
-            child,
-            stdin,
-            stdout_lines: BufReader::new(stdout).lines(),
-            next_id: 1,
-            initialized: false,
-            server_name: None,
-            server_version: None,
-        })
-    }
-
-    /// Send the MCP `initialize` request and record returned server metadata.
-    pub async fn initialize(
-        &mut self,
+    /// Spawn a stdio MCP server process and complete the rmcp initialization handshake.
+    pub async fn spawn_stdio(
+        command: Command,
         options: McpClientOptions,
-    ) -> Result<(), AgentFlowError> {
-        let result = self
-            .request(
-                "initialize",
-                json!({
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {},
-                    "clientInfo": {
-                        "name": options.client_name,
-                        "version": options.client_version,
-                    }
-                }),
-            )
-            .await?;
+    ) -> Result<Self, AgentFlowError> {
+        let transport = TokioChildProcess::new(command)
+            .map_err(|e| AgentFlowError::Custom(format!("Failed to prepare MCP stdio transport: {e}")))?;
 
-        let protocol_version = result
-            .get("protocolVersion")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                AgentFlowError::Custom(
-                    "MCP initialize response missing protocolVersion".to_string(),
-                )
-            })?;
+        let service = client_info(options)
+            .serve(transport)
+            .await
+            .map_err(|e| AgentFlowError::Custom(format!("Failed to initialize MCP stdio client: {e}")))?;
 
-        if protocol_version != "2024-11-05" {
-            return Err(AgentFlowError::Custom(format!(
-                "Unsupported MCP protocol version from server: {protocol_version}"
-            )));
-        }
-
-        let server_info = result.get("serverInfo").ok_or_else(|| {
-            AgentFlowError::Custom("MCP initialize response missing serverInfo".to_string())
-        })?;
-
-        self.server_name = server_info
-            .get("name")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned);
-        self.server_version = server_info
-            .get("version")
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned);
-        self.initialized = true;
-
-        Ok(())
+        Ok(Self::from_service(service))
     }
 
     /// Return all tools exposed by the connected MCP server.
-    pub async fn list_tools(&mut self) -> Result<Vec<McpTool>, AgentFlowError> {
-        self.ensure_initialized()?;
+    pub async fn list_tools(&self) -> Result<Vec<McpTool>, AgentFlowError> {
+        let tools = self
+            .service
+            .list_all_tools()
+            .await
+            .map_err(|e| AgentFlowError::Custom(format!("MCP tools/list failed: {e}")))?;
 
-        let result = self.request("tools/list", json!({})).await?;
-        let tools_value = result.get("tools").cloned().ok_or_else(|| {
-            AgentFlowError::Custom("MCP tools/list response missing tools array".to_string())
-        })?;
-
-        serde_json::from_value::<Vec<McpTool>>(tools_value)
-            .map_err(|e| AgentFlowError::Custom(format!("Invalid MCP tools/list payload: {e}")))
+        tools.into_iter().map(Self::convert_tool).collect()
     }
 
     /// Call a named tool with JSON object arguments.
     pub async fn call_tool(
-        &mut self,
+        &self,
         name: impl Into<String>,
         arguments: Value,
     ) -> Result<McpCallResult, AgentFlowError> {
-        self.ensure_initialized()?;
+        let arguments = match arguments {
+            Value::Object(map) => Some(map),
+            Value::Null => None,
+            other => {
+                return Err(AgentFlowError::Custom(format!(
+                    "MCP tool arguments must be a JSON object or null, got {other}"
+                )))
+            }
+        };
 
         let result = self
-            .request(
-                "tools/call",
-                json!({
-                    "name": name.into(),
-                    "arguments": arguments,
-                }),
-            )
-            .await?;
+            .service
+            .call_tool(CallToolRequestParam {
+                name: name.into().into(),
+                arguments,
+            })
+            .await
+            .map_err(|e| AgentFlowError::Custom(format!("MCP tools/call failed: {e}")))?;
 
-        serde_json::from_value::<McpCallResult>(result)
-            .map_err(|e| AgentFlowError::Custom(format!("Invalid MCP tools/call payload: {e}")))
+        Ok(McpCallResult {
+            content: result.content.into_iter().map(content_to_json).collect(),
+            is_error: result.is_error,
+        })
     }
 
-    /// Return server name captured during `initialize`, if available.
+    /// Return server name captured during initialize, if available.
     pub fn server_name(&self) -> Option<&str> {
         self.server_name.as_deref()
     }
 
-    /// Return server version captured during `initialize`, if available.
+    /// Return server version captured during initialize, if available.
     pub fn server_version(&self) -> Option<&str> {
         self.server_version.as_deref()
     }
 
-    async fn request(&mut self, method: &str, params: Value) -> Result<Value, AgentFlowError> {
-        let id = self.next_id;
-        self.next_id += 1;
+    /// Cancel the underlying rmcp connection.
+    pub async fn shutdown(self) -> Result<(), AgentFlowError> {
+        self.service
+            .cancel()
+            .await
+            .map(|_| ())
+            .map_err(|e| AgentFlowError::Custom(format!("Failed to shut down MCP client: {e}")))
+    }
 
-        let request = json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "method": method,
-            "params": params,
-        });
-
-        let request_line = serde_json::to_string(&request)?;
-        self.stdin.write_all(request_line.as_bytes()).await.map_err(|e| {
-            AgentFlowError::Custom(format!("Failed to write MCP request '{method}': {e}"))
-        })?;
-        self.stdin.write_all(b"\n").await.map_err(|e| {
-            AgentFlowError::Custom(format!("Failed to terminate MCP request '{method}': {e}"))
-        })?;
-        self.stdin.flush().await.map_err(|e| {
-            AgentFlowError::Custom(format!("Failed to flush MCP request '{method}': {e}"))
-        })?;
-
-        let response_line = self.read_next_response_line(method).await?;
-        let response: Value = serde_json::from_str(&response_line).map_err(|e| {
-            AgentFlowError::Custom(format!(
-                "Failed to parse MCP response for '{method}' as JSON: {e}"
-            ))
-        })?;
-
-        let jsonrpc = response
-            .get("jsonrpc")
-            .and_then(Value::as_str)
-            .ok_or_else(|| {
-                AgentFlowError::Custom(format!(
-                    "MCP response for '{method}' missing jsonrpc field"
-                ))
-            })?;
-        if jsonrpc != "2.0" {
-            return Err(AgentFlowError::Custom(format!(
-                "Invalid jsonrpc version in MCP response for '{method}': {jsonrpc}"
-            )));
+    fn from_service(service: RunningService<RoleClient, ClientInfo>) -> Self {
+        let peer_info = service.peer_info().cloned();
+        Self {
+            server_name: peer_info.as_ref().map(|info| info.server_info.name.clone()),
+            server_version: peer_info
+                .as_ref()
+                .map(|info| info.server_info.version.clone()),
+            service,
         }
+    }
 
-        let response_id = response.get("id").ok_or_else(|| {
-            AgentFlowError::Custom(format!("MCP response for '{method}' missing id field"))
-        })?;
-        if response_id != &json!(id) {
-            return Err(AgentFlowError::Custom(format!(
-                "MCP response id mismatch for '{method}': expected {id}, got {response_id}"
-            )));
-        }
-
-        if let Some(error) = response.get("error") {
-            let code = error.get("code").and_then(Value::as_i64).unwrap_or(-32000);
-            let message = error
-                .get("message")
-                .and_then(Value::as_str)
-                .unwrap_or("Unknown MCP server error");
-            let data = error.get("data").cloned();
-            let rendered = if let Some(data) = data {
-                format!("MCP server error {code}: {message}; data={data}")
-            } else {
-                format!("MCP server error {code}: {message}")
-            };
-            return Err(AgentFlowError::NodeFailure(rendered));
-        }
-
-        response.get("result").cloned().ok_or_else(|| {
-            AgentFlowError::Custom(format!("MCP response for '{method}' missing result field"))
+    fn convert_tool(tool: Tool) -> Result<McpTool, AgentFlowError> {
+        Ok(McpTool {
+            name: tool.name.into_owned(),
+            description: tool.description.map(|d| d.into_owned()).unwrap_or_default(),
+            input_schema: serde_json::to_value(&*tool.input_schema).map_err(|e| {
+                AgentFlowError::Custom(format!("Failed to serialize MCP tool schema: {e}"))
+            })?,
         })
-    }
-
-    async fn read_next_response_line(&mut self, method: &str) -> Result<String, AgentFlowError> {
-        loop {
-            match self.stdout_lines.next_line().await {
-                Ok(Some(line)) if !line.trim().is_empty() => return Ok(line),
-                Ok(Some(_)) => continue,
-                Ok(None) => {
-                    let status = self.child.wait().await.map_err(|e| {
-                        AgentFlowError::Custom(format!(
-                            "MCP server closed stdout unexpectedly during '{method}': {e}"
-                        ))
-                    })?;
-                    return Err(AgentFlowError::Custom(format!(
-                        "MCP server closed stdout unexpectedly during '{method}' with status {status}"
-                    )));
-                }
-                Err(e) => {
-                    return Err(AgentFlowError::Custom(format!(
-                        "Failed reading MCP response for '{method}': {e}"
-                    )));
-                }
-            }
-        }
-    }
-
-    fn ensure_initialized(&self) -> Result<(), AgentFlowError> {
-        if self.initialized {
-            Ok(())
-        } else {
-            Err(AgentFlowError::Custom(
-                "McpClient must be initialized before use".to_string(),
-            ))
-        }
     }
 }
 
-impl Drop for McpClient {
-    fn drop(&mut self) {
-        let _ = self.child.start_kill();
+fn client_info(options: McpClientOptions) -> ClientInfo {
+    ClientInfo {
+        client_info: rmcp::model::Implementation {
+            name: options.client_name,
+            version: options.client_version,
+        },
+        ..ClientInfo::default()
     }
+}
+
+fn content_to_json(content: Content) -> Value {
+    serde_json::to_value(content).unwrap_or_else(|_| Value::Null)
 }

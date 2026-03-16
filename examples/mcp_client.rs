@@ -105,13 +105,14 @@ async fn main() -> Result<(), AgentFlowError> {
         server_exe.set_extension("exe");
     }
 
-    let mut client = McpClient::spawn_stdio(tokio::process::Command::new(server_exe))?;
-    client
-        .initialize(McpClientOptions {
+    let client = McpClient::spawn_stdio(
+        tokio::process::Command::new(server_exe),
+        McpClientOptions {
             client_name: "agentflow-mcp-client-example".into(),
             client_version: env!("CARGO_PKG_VERSION").into(),
-        })
-        .await?;
+        },
+    )
+    .await?;
 
     info!(
         server_name = client.server_name().unwrap_or("unknown"),
@@ -171,7 +172,7 @@ async fn main() -> Result<(), AgentFlowError> {
             }
 
             let crawl_result = {
-                let mut client = mcp_client_crawl.lock().await;
+                let client = mcp_client_crawl.lock().await;
                 client
                     .call_tool("crawl_goa_url", json!({ "url": readme_url }))
                     .await
@@ -351,7 +352,7 @@ async fn main() -> Result<(), AgentFlowError> {
             let markdown_path = "/tmp/goa-ui-components-review.md".to_string();
 
             let tool_result = {
-                let mut client = mcp_client_report.lock().await;
+                let client = mcp_client_report.lock().await;
                 client
                     .call_tool(
                         "generate_pdf",

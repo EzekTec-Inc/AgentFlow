@@ -861,3 +861,13 @@ Replaced one-line comment with full section that:
 
 - Added template substitution support in `src/mcp/server.rs` to allow mapping of dynamic `params.arguments` from the client to the server tool's `args`.
 - Updated `examples/mcp_server.rs` to use `{{url}}`, `{{markdown}}`, and `{{output_path}}` placeholders instead of positional or mocked arguments.
+
+## [2026-03-16T04:36:06Z] Infer MCP tool input schema from skill placeholders
+- **Summary of change:** Updated `src/mcp/server.rs` so MCP `tools/list` advertises inferred input schemas for skill-backed tools instead of a hardcoded empty object schema.
+- **Files modified:**
+  - `src/mcp/server.rs` (modified)
+  - `PLAN.md` (modified)
+- **Exact reason:** The MCP server already supported runtime substitution of `{{placeholder}}` tokens from tool call arguments, but clients could not discover expected inputs because every tool exposed an empty schema.
+- **Previous behavior:** Every listed MCP tool returned the same empty input schema with no declared properties or required fields, even when the underlying skill tool args contained placeholders such as `{{url}}` or `{{output_path}}`.
+- **New behavior:** `src/mcp/server.rs` now extracts placeholder names from `SkillTool.args` and exposes them as required string properties in each tool's `input_schema`, while still allowing additional properties.
+- **Rollback instructions:** Revert `src/mcp/server.rs` to restore the previous `empty_input_schema()` behavior and remove this `PLAN.md` entry.
