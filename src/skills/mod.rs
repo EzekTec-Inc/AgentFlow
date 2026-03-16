@@ -4,6 +4,10 @@ use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 /// Represents an executable tool defined in a skill.
+///
+/// Security: skill tools are trusted executable configuration. Do not load
+/// untrusted skill files, and do not define shell-interpreter commands such as
+/// `sh`, `bash`, `cmd`, `powershell`, or `pwsh` with placeholder-based input.
 pub struct SkillTool {
     /// Tool name.
     pub name: String,

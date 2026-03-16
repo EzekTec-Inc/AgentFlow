@@ -17,9 +17,9 @@ use tracing::{info, instrument, warn};
 /// A pattern that wraps a `SkillTool` into a `NodeResult` executor.
 ///
 /// `SkillToolNode` takes a defined tool from a parsed SKILL.md file and
-/// executes it locally as a standard node in the orchestrator flow. 
+/// executes it locally as a standard node in the orchestrator flow.
 ///
-/// It writes the output to `store["tool_stdout"]`, `store["tool_stderr"]`, 
+/// It writes the output to `store["tool_stdout"]`, `store["tool_stderr"]`,
 /// and `store["tool_exit_code"]`.
 #[derive(Clone)]
 pub struct SkillToolNode {
@@ -33,7 +33,10 @@ pub struct SkillToolNode {
 impl SkillToolNode {
     /// Create a new `SkillToolNode` from a `SkillTool`.
     pub fn new(tool: SkillTool) -> Self {
-        Self { tool, timeout_secs: 60 }
+        Self {
+            tool,
+            timeout_secs: 60,
+        }
     }
 
     /// Set a custom execution timeout in seconds.
@@ -58,7 +61,9 @@ impl NodeResult<SharedStore, SharedStore> for SkillToolNode {
             let mut cmd = Command::new(&tool.command);
             cmd.args(&tool.args);
 
-            match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output()).await {
+            match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output())
+                .await
+            {
                 Ok(Ok(output)) => {
                     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -93,8 +98,8 @@ impl NodeResult<SharedStore, SharedStore> for SkillToolNode {
 #[cfg(feature = "skills")]
 /// A pattern that injects a `Skill`'s instructions into the state context.
 ///
-/// `SkillInjector` takes a `Skill` and simply merges its base instructions 
-/// into the store so that subsequent LLM nodes can read it and use it as 
+/// `SkillInjector` takes a `Skill` and simply merges its base instructions
+/// into the store so that subsequent LLM nodes can read it and use it as
 /// a system preamble or context guide.
 #[derive(Clone)]
 pub struct SkillInjector {
@@ -108,8 +113,8 @@ pub struct SkillInjector {
 impl SkillInjector {
     /// Create a new `SkillInjector` for the given skill.
     pub fn new(skill: Skill) -> Self {
-        Self { 
-            skill, 
+        Self {
+            skill,
             key: "skill_instructions".to_string(),
         }
     }
@@ -124,13 +129,10 @@ impl SkillInjector {
 #[cfg(feature = "skills")]
 impl crate::core::node::Node<SharedStore, SharedStore> for SkillInjector {
     #[instrument(name = "skill_injector.call", skip(self, input), fields(skill_name = %self.skill.name))]
-    fn call(
-        &self,
-        input: SharedStore,
-    ) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
+    fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
         let instructions = self.skill.instructions.clone();
         let key = self.key.clone();
-        
+
         Box::pin(async move {
             info!("Injecting skill instructions for: {}", self.skill.name);
             let mut store = input.write().await;

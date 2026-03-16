@@ -62,13 +62,13 @@ impl McpClient {
         command: Command,
         options: McpClientOptions,
     ) -> Result<Self, AgentFlowError> {
-        let transport = TokioChildProcess::new(command)
-            .map_err(|e| AgentFlowError::Custom(format!("Failed to prepare MCP stdio transport: {e}")))?;
+        let transport = TokioChildProcess::new(command).map_err(|e| {
+            AgentFlowError::Custom(format!("Failed to prepare MCP stdio transport: {e}"))
+        })?;
 
-        let service = client_info(options)
-            .serve(transport)
-            .await
-            .map_err(|e| AgentFlowError::Custom(format!("Failed to initialize MCP stdio client: {e}")))?;
+        let service = client_info(options).serve(transport).await.map_err(|e| {
+            AgentFlowError::Custom(format!("Failed to initialize MCP stdio client: {e}"))
+        })?;
 
         Ok(Self::from_service(service))
     }

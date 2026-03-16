@@ -128,6 +128,8 @@ flowchart TD
 
 Define agent personas, prompts, and tool requirements in YAML — no Rust recompile needed.
 
+**Security note:** skill files are trusted executable configuration. Do not load untrusted skill files. If a skill defines tools, prefer fixed executables and structured arguments; do not use shell interpreters with placeholder-based input.
+
 ```mermaid
 flowchart LR
     YAML[Skill.yaml] -->|parsed by| Parser[Skill Parser]
@@ -144,6 +146,8 @@ flowchart LR
 ### 4. `utils` (System Interfacing)
 
 Safe, standardised ways for agents to interact with the host system.
+
+**Security note:** prefer `ToolRegistry` for allowlisted execution boundaries. `create_tool_node` is a low-level primitive and should not be wired to untrusted or LLM-generated command names/arguments without strict validation.
 
 ```mermaid
 sequenceDiagram
@@ -163,8 +167,8 @@ sequenceDiagram
 
 | Function / Type | Purpose |
 |-----------------|---------|
-| `create_tool_node` | Run a shell command as a node |
-| `ToolRegistry` | Explicit allowlist of permitted tools; blocks arbitrary LLM-generated names |
+| `create_tool_node` | Run a host command as a node; unsafe for untrusted/LLM-generated input without validation |
+| `ToolRegistry` | Explicit allowlist of permitted tools; preferred boundary for host command execution |
 | `create_diff_node` | Node receives a read-only snapshot, returns `StateDiff`; framework applies under one brief write lock — structurally deadlock-free |
 | `create_corrective_retry_node` | Self-correction loop: writes the failure reason into a store key before each retry so the LLM can read and adjust |
 
@@ -205,6 +209,11 @@ names are the hyphenated names declared in `Cargo.toml`. For example:
 - `mcp-server` requires `--features "mcp skills"`.
 - `mcp-client` requires `--features mcp` and expects the `mcp-server`
   example binary to be available.
+- MCP validation behavior: tool input schemas are inferred from `{{placeholder}}`
+  arguments in skill definitions. Calls with missing required fields or non-string
+  values return `is_error = true` tool results instead of spawning the command.
+- Next MCP phase: expand server protocol coverage with `resources` support before
+  adding matching higher-level client helpers.
 
 Build the paired MCP server binary first:
 

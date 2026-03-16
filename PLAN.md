@@ -871,3 +871,36 @@ Replaced one-line comment with full section that:
 - **Previous behavior:** Every listed MCP tool returned the same empty input schema with no declared properties or required fields, even when the underlying skill tool args contained placeholders such as `{{url}}` or `{{output_path}}`.
 - **New behavior:** `src/mcp/server.rs` now extracts placeholder names from `SkillTool.args` and exposes them as required string properties in each tool's `input_schema`, while still allowing additional properties.
 - **Rollback instructions:** Revert `src/mcp/server.rs` to restore the previous `empty_input_schema()` behavior and remove this `PLAN.md` entry.
+
+## [2026-03-16T18:21:12Z] Start next MCP phase with protocol expansion planning
+- **Summary of change:** Aligned top-level MCP documentation with the completed schema inference and validation behavior, and confirmed the next implementation target as MCP `resources` support.
+- **Files modified:**
+  - `ARCHITECTURE.md` (modified)
+  - `PLAN.md` (modified)
+- **Exact reason:** The previous docs still described MCP too generically and did not reflect the completed minimal `McpClient`, inferred tool schemas, or validation behavior. Before expanding protocol coverage, the repo needed an accurate statement of current capabilities and the next target.
+- **Previous behavior:** `ARCHITECTURE.md` documented MCP as a generic stdio server for tools and did not mention the current AgentFlow-native client scope or the placeholder-based validation now exercised by integration tests.
+- **New behavior:** `ARCHITECTURE.md` now documents the minimal `McpClient` scope (`initialize`, `tools/list`, `tools/call`) and the placeholder-derived required-string schema/validation behavior. The next planned MCP expansion target is `resources` support on the server side.
+- **Rollback instructions:** Revert the `ARCHITECTURE.md` edits and remove this `PLAN.md` entry if the MCP roadmap changes.
+
+## History
+- Implemented remediation A: child process timeout cleanup.
+  - Updated `src/utils/tool.rs`, `src/patterns/skill.rs`, and `src/mcp/server.rs` to spawn child processes explicitly and, on timeout, send a kill signal and wait for process reaping before returning a timeout error.
+  - Added focused regression test `tests/process_timeout_cleanup.rs` covering prompt timeout return and timeout error/status propagation for reusable crate behavior.
+
+---
+
+## Security hardening: MCP shell blocking and schema tightening
+- Timestamp (UTC): 2026-03-16T19:05:51Z
+- Summary of change: Blocked shell-interpreter skill tools in the MCP server, tightened MCP tool schemas to reject extra properties, replaced the insecure shell-based MCP example, added security guidance to docs, and added MCP regression tests.
+- Files modified:
+  - `src/mcp/server.rs`
+  - `examples/mcp_server.rs`
+  - `src/skills/mod.rs`
+  - `README.md`
+  - `tests/mcp_integration.rs`
+  - `tests/mcp_security.rs`
+  - `PLAN.md`
+- Exact reason: The framework exposed a documented `bash -c` placeholder interpolation pattern that could lead to command injection and did not strictly constrain MCP tool input schemas.
+- Previous behavior: MCP skill tools could execute shell interpreters such as `bash`; MCP tool schemas allowed additional undeclared properties; the MCP example demonstrated shell-based placeholder execution.
+- New behavior: MCP skill tools using blocked shell interpreters are rejected before execution; MCP tool schemas set `additionalProperties` to `false`; the MCP example uses shell-free structured arguments; docs now warn that skill files are trusted executable configuration; tests verify the hardened behavior.
+- Rollback instructions: Revert the edits in the files listed above, remove `tests/mcp_security.rs`, restore the previous MCP example and schema behavior, and append a new `PLAN.md` entry documenting the rollback.

@@ -3,13 +3,53 @@ use crate::core::node::{create_node, SharedStore, SimpleNode};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::future::Future;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 use tracing::{debug, warn};
 
 /// Default timeout for external tool execution (30 seconds).
 pub const DEFAULT_TOOL_TIMEOUT: Duration = Duration::from_secs(30);
+
+async fn wait_with_timeout(
+    mut child: Child,
+    timeout: Duration,
+) -> Result<std::process::Output, std::io::Error> {
+    let mut stdout = child.stdout.take();
+    let mut stderr = child.stderr.take();
+
+    match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(Ok(status)) => {
+            use tokio::io::AsyncReadExt;
+
+            let mut stdout_buf = Vec::new();
+            let mut stderr_buf = Vec::new();
+
+            if let Some(mut out) = stdout.take() {
+                out.read_to_end(&mut stdout_buf).await?;
+            }
+            if let Some(mut err) = stderr.take() {
+                err.read_to_end(&mut stderr_buf).await?;
+            }
+
+            Ok(std::process::Output {
+                status,
+                stdout: stdout_buf,
+                stderr: stderr_buf,
+            })
+        }
+        Ok(Err(err)) => Err(err),
+        Err(_) => {
+            child.start_kill()?;
+            let _ = child.wait().await;
+            Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("process timed out after {}s", timeout.as_secs()),
+            ))
+        }
+    }
+}
 
 /// Creates a node that executes an external shell command or script.
 ///
@@ -65,11 +105,16 @@ pub fn create_tool_node_with_timeout(
         Box::pin(async move {
             let mut cmd = Command::new(&command);
             cmd.args(&args);
+            cmd.stdout(Stdio::piped());
+            cmd.stderr(Stdio::piped());
 
-            let result = tokio::time::timeout(timeout, cmd.output()).await;
+            let result = match cmd.spawn() {
+                Ok(child) => wait_with_timeout(child, timeout).await,
+                Err(e) => Err(e),
+            };
 
             match result {
-                Ok(Ok(output)) => {
+                Ok(output) => {
                     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
                     let status = output.status.code().unwrap_or(-1);
@@ -82,7 +127,7 @@ pub fn create_tool_node_with_timeout(
                         Value::Number(status.into()),
                     );
                 }
-                Ok(Err(e)) => {
+                Err(e) if e.kind() != std::io::ErrorKind::TimedOut => {
                     let mut guard = store.write().await;
                     guard.insert(
                         format!("{}_error", tool_name),
@@ -90,7 +135,7 @@ pub fn create_tool_node_with_timeout(
                     );
                     guard.insert(format!("{}_status", tool_name), Value::Number((-1).into()));
                 }
-                Err(_elapsed) => {
+                Err(_) => {
                     let mut guard = store.write().await;
                     guard.insert(
                         format!("{}_error", tool_name),

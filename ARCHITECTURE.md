@@ -432,6 +432,8 @@ Feature-gated examples:
 - `rust-agentic-skills` and `document-processing` require `--features skills`
 - `mcp-server` requires `--features "mcp skills"`
 - `mcp-client` requires `--features mcp`
+- MCP examples currently cover the minimal AgentFlow-native client/server path:
+  `initialize`, `tools/list`, and `tools/call`
 
 The `mcp-client` example spawns the `mcp-server` example binary by name. Build
 the server binary first so the executable is available next to the client

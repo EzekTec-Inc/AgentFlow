@@ -6,19 +6,20 @@ use agentflow::skills::Skill;
 async fn main() -> Result<(), AgentFlowError> {
     let skill_content = r#"---
 name: GoAResearchTools
-description: Tools for crawling the Government of Alberta design system and generating reports.
+description: Tools for crawling the Government of Alberta design system and echoing report metadata.
 version: 1.0.0
 tools:
   - name: crawl_goa_url
     description: Fetches content from a Government of Alberta Design System URL (e.g., https://design.alberta.ca/)
     command: curl
     args: ["-sL", "{{url}}"]
-  - name: generate_pdf
-    description: Generates a PDF report from markdown content. Pass the content as the first argument.
-    command: bash
-    args: ["-c", "cat << 'EOF' > {{output_path}}.md\n{{markdown}}\nEOF\necho '% GoA Design System Report' > {{output_path}} && echo 'PDF generation mocked successfully.'"]
+  - name: render_report_summary
+    description: Echoes a report summary title for testing structured MCP tool execution without a shell.
+    command: printf
+    args: ["Report ready: %s\n", "{{title}}"]
 ---
 You are a tool server providing capabilities for the GoA research pipeline.
+Security note: skill-defined tools are trusted executable configuration. Do not use shell interpreters such as bash/sh with placeholders.
 "#;
     let skill = Skill::parse(skill_content)?;
 

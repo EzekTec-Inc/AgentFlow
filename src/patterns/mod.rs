@@ -12,13 +12,13 @@ pub mod multi_agent;
 pub mod rag;
 /// Retry-with-prompt-injection pattern.
 pub mod rpi;
+#[cfg(feature = "skills")]
+/// Skill execution pattern.
+pub mod skill;
 /// Structured output enforcement pattern.
 pub mod structured_output;
 /// Linear workflow pattern.
 pub mod workflow;
-#[cfg(feature = "skills")]
-/// Skill execution pattern.
-pub mod skill;
 
 // Re-export all patterns for convenience
 pub use agent::Agent;
@@ -31,4 +31,4 @@ pub use structured_output::StructuredOutput;
 pub use workflow::Workflow;
 
 #[cfg(feature = "skills")]
-pub use skill::{SkillToolNode, SkillInjector};
+pub use skill::{SkillInjector, SkillToolNode};

@@ -239,7 +239,8 @@ async fn main() -> Result<(), AgentFlowError> {
                     state.agent_error = Some(AgentError::CrawlFailed {
                         url: readme_url.into(),
                         reason: format!("crawl_goa_url failed: {e}"),
-                        retry_hint: "Verify the MCP server is reachable and the crawl tool succeeds.".into(),
+                        retry_hint:
+                            "Verify the MCP server is reachable and the crawl tool succeeds.".into(),
                     });
                     state.state = StoreState::Failed;
                     state.next_action = Action::Failed;
