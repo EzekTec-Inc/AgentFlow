@@ -551,8 +551,8 @@ mod tests {
         Skill {
             name: "GoA Research Tools".to_string(),
             description: "Research workflow utilities".to_string(),
-            version: "1.0.0".to_string(),
-            instructions: Some("Use the tools carefully".to_string()),
+            version: Some("1.0.0".to_string()),
+            instructions: "Use the tools carefully".to_string(),
             tools: Some(vec![sample_tool()]),
         }
     }
@@ -586,7 +586,7 @@ mod tests {
         let schema = tool_input_schema(&sample_tool());
 
         assert_eq!(schema.get("type"), Some(&Value::String("object".to_string())));
-        assert_eq!(schema.get("additionalProperties"), Some(&Value::Bool(true)));
+        assert_eq!(schema.get("additionalProperties"), Some(&Value::Bool(false)));
 
         let properties = schema
             .get("properties")

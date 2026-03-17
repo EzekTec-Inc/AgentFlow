@@ -1,6 +1,9 @@
 use crate::core::error::AgentFlowError;
 use rmcp::{
-    model::{CallToolRequestParam, ClientInfo, Content, Tool},
+    model::{
+        CallToolRequestParam, ClientInfo, Content, ReadResourceRequestParam, Resource,
+        ResourceContents, Tool,
+    },
     service::RunningService,
     transport::child_process::TokioChildProcess,
     RoleClient, ServiceExt,
@@ -49,6 +52,55 @@ pub struct McpCallResult {
     pub is_error: Option<bool>,
 }
 
+/// Minimal MCP resource descriptor returned by `resources/list`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpResource {
+    /// Resource URI.
+    pub uri: String,
+    /// Human-readable resource name.
+    pub name: String,
+    /// Optional resource description.
+    pub description: Option<String>,
+    /// Optional MIME type.
+    #[serde(rename = "mimeType")]
+    pub mime_type: Option<String>,
+    /// Optional byte size when provided by the server.
+    pub size: Option<u32>,
+}
+
+/// Minimal MCP `resources/read` result.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpReadResourceResult {
+    /// Structured resource content entries returned by the server.
+    pub contents: Vec<McpResourceContents>,
+}
+
+/// Owned MCP resource content entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum McpResourceContents {
+    /// Text resource content.
+    #[serde(rename_all = "camelCase")]
+    Text {
+        /// Resource URI.
+        uri: String,
+        /// Optional MIME type.
+        mime_type: Option<String>,
+        /// Text payload.
+        text: String,
+    },
+    /// Base64-encoded blob resource content.
+    #[serde(rename_all = "camelCase")]
+    Blob {
+        /// Resource URI.
+        uri: String,
+        /// Optional MIME type.
+        mime_type: Option<String>,
+        /// Blob payload.
+        blob: String,
+    },
+}
+
 /// rmcp-backed MCP client supporting stdio child processes and streamable HTTP.
 pub struct McpClient {
     service: RunningService<RoleClient, ClientInfo>,
@@ -82,6 +134,37 @@ impl McpClient {
             .map_err(|e| AgentFlowError::Custom(format!("MCP tools/list failed: {e}")))?;
 
         tools.into_iter().map(Self::convert_tool).collect()
+    }
+
+    /// Return all resources exposed by the connected MCP server.
+    pub async fn list_resources(&self) -> Result<Vec<McpResource>, AgentFlowError> {
+        let resources = self
+            .service
+            .list_all_resources()
+            .await
+            .map_err(|e| AgentFlowError::Custom(format!("MCP resources/list failed: {e}")))?;
+
+        resources.into_iter().map(Self::convert_resource).collect()
+    }
+
+    /// Read a named resource by URI.
+    pub async fn read_resource(
+        &self,
+        uri: impl Into<String>,
+    ) -> Result<McpReadResourceResult, AgentFlowError> {
+        let result = self
+            .service
+            .read_resource(ReadResourceRequestParam { uri: uri.into() })
+            .await
+            .map_err(|e| AgentFlowError::Custom(format!("MCP resources/read failed: {e}")))?;
+
+        Ok(McpReadResourceResult {
+            contents: result
+                .contents
+                .into_iter()
+                .map(Self::convert_resource_contents)
+                .collect(),
+        })
     }
 
     /// Call a named tool with JSON object arguments.
@@ -153,6 +236,37 @@ impl McpClient {
                 AgentFlowError::Custom(format!("Failed to serialize MCP tool schema: {e}"))
             })?,
         })
+    }
+
+    fn convert_resource(resource: Resource) -> Result<McpResource, AgentFlowError> {
+        let raw = serde_json::to_value(&resource)
+            .map_err(|e| AgentFlowError::Custom(format!("Failed to serialize MCP resource: {e}")))?;
+
+        serde_json::from_value(raw)
+            .map_err(|e| AgentFlowError::Custom(format!("Failed to deserialize MCP resource: {e}")))
+    }
+
+    fn convert_resource_contents(contents: ResourceContents) -> McpResourceContents {
+        match contents {
+            ResourceContents::TextResourceContents {
+                uri,
+                mime_type,
+                text,
+            } => McpResourceContents::Text {
+                uri,
+                mime_type,
+                text,
+            },
+            ResourceContents::BlobResourceContents {
+                uri,
+                mime_type,
+                blob,
+            } => McpResourceContents::Blob {
+                uri,
+                mime_type,
+                blob,
+            },
+        }
     }
 }
 

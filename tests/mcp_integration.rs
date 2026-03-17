@@ -31,6 +31,31 @@ async fn mcp_client_server_round_trip_covers_schema_success_and_validation_error
     assert!(tools.iter().any(|tool| tool.name == "crawl_goa_url"));
     assert!(tools.iter().any(|tool| tool.name == "render_report_summary"));
 
+    let resources = client.list_resources().await.expect("list MCP resources");
+    assert!(resources
+        .iter()
+        .any(|resource| resource.uri == "agentflow://skill/goaresearchtools/overview"));
+    assert!(resources.iter().any(|resource| {
+        resource.uri == "agentflow://skill/goaresearchtools/tool/render-report-summary"
+    }));
+
+    let overview = client
+        .read_resource("agentflow://skill/goaresearchtools/overview")
+        .await
+        .expect("read MCP skill overview resource");
+    let overview_payload = serde_json::to_string(&overview.contents).expect("serialize overview contents");
+    assert!(overview_payload.contains("Skill: GoAResearchTools"));
+    assert!(overview_payload.contains("render_report_summary"));
+
+    let tool_resource = client
+        .read_resource("agentflow://skill/goaresearchtools/tool/render-report-summary")
+        .await
+        .expect("read MCP tool resource");
+    let tool_resource_payload =
+        serde_json::to_string(&tool_resource.contents).expect("serialize tool resource contents");
+    assert!(tool_resource_payload.contains("Tool: render_report_summary"));
+    assert!(tool_resource_payload.contains("Placeholders: title"));
+
     let crawl_tool = tools
         .iter()
         .find(|tool| tool.name == "crawl_goa_url")

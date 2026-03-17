@@ -904,3 +904,15 @@ Replaced one-line comment with full section that:
 - Previous behavior: MCP skill tools could execute shell interpreters such as `bash`; MCP tool schemas allowed additional undeclared properties; the MCP example demonstrated shell-based placeholder execution.
 - New behavior: MCP skill tools using blocked shell interpreters are rejected before execution; MCP tool schemas set `additionalProperties` to `false`; the MCP example uses shell-free structured arguments; docs now warn that skill files are trusted executable configuration; tests verify the hardened behavior.
 - Rollback instructions: Revert the edits in the files listed above, remove `tests/mcp_security.rs`, restore the previous MCP example and schema behavior, and append a new `PLAN.md` entry documenting the rollback.
+
+### Step 4.10: MCP Client Resource Helpers
+* **Timestamp (UTC):** 2026-03-16T19:44:00Z
+* **Summary of change:** Added minimal MCP client helpers for `resources/list` and `resources/read`, exported the new client-side resource types, and extended MCP integration coverage to verify resource listing and reading against the example server.
+* **Files modified:**
+  - `src/mcp/client.rs`
+  - `src/mcp/mod.rs`
+  - `tests/mcp_integration.rs`
+* **Exact reason:** The MCP server already implemented resources support; the remaining gap was higher-level client access to those server resources.
+* **Previous behavior:** `McpClient` supported only `list_tools`, `call_tool`, and `shutdown`, so callers had no crate-level helper for MCP resource discovery or reading.
+* **New behavior:** `McpClient` now supports `list_resources` and `read_resource`, returning owned serializable AgentFlow types. Integration coverage now verifies the example server exposes and serves skill/tool resources.
+* **Rollback instructions:** Revert the changes in `src/mcp/client.rs`, `src/mcp/mod.rs`, and `tests/mcp_integration.rs`; remove this appended PLAN entry.
