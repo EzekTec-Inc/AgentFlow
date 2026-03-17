@@ -1,7 +1,7 @@
+#![cfg(feature = "mcp")]
 use agentflow::mcp::{McpClient, McpClientOptions};
 use serde_json::json;
 
-#[cfg(feature = "mcp")]
 #[tokio::test]
 async fn mcp_client_server_round_trip_covers_schema_success_and_validation_error() {
     let mut command = tokio::process::Command::new("cargo");

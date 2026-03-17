@@ -1,7 +1,7 @@
+#![cfg(feature = "mcp")]
 use agentflow::mcp::{McpClient, McpClientOptions};
 use serde_json::json;
 
-#[cfg(feature = "mcp")]
 #[tokio::test]
 async fn mcp_server_blocks_shell_based_skill_tools() {
     let mut command = tokio::process::Command::new("cargo");

@@ -136,3 +136,8 @@ required-features = ["mcp", "skills"]
 name = "mcp-client"
 path = "examples/mcp_client.rs"
 required-features = ["mcp", "skills"]
+
+[[example]]
+name = "mcp_server_blocked_shell"
+path = "examples/mcp_server_blocked_shell.rs"
+required-features = ["mcp", "skills"]
