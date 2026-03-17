@@ -1,4 +1,3 @@
-use crate::core::batch::Batch;
 use crate::core::node::{Node, SharedStore};
 use std::future::Future;
 use std::pin::Pin;
@@ -54,15 +53,15 @@ use tracing::{debug, info, instrument};
 /// [`ParallelBatch`]: crate::core::batch::ParallelBatch
 #[derive(Clone)]
 pub struct MapReduce<M, R> {
-    /// The sequential batch mapper applied to each input item.
-    pub mapper: Batch<M>,
+    /// The mapper applied to the input batch (e.g., `Batch` or `ParallelBatch`).
+    pub mapper: M,
     /// The reducer applied to all mapped results.
     pub reducer: R,
 }
 
 impl<M, R> MapReduce<M, R> {
     /// Create a `MapReduce` from a batch mapper and a reducer.
-    pub fn new(mapper: Batch<M>, reducer: R) -> Self {
+    pub fn new(mapper: M, reducer: R) -> Self {
         Self { mapper, reducer }
     }
 
@@ -70,7 +69,7 @@ impl<M, R> MapReduce<M, R> {
     #[instrument(name = "mapreduce.run", skip(self, inputs), fields(input_count = inputs.len()))]
     pub async fn run(&self, inputs: Vec<SharedStore>) -> SharedStore
     where
-        M: Node<SharedStore, SharedStore> + Send + Sync + Clone,
+        M: Node<Vec<SharedStore>, Vec<SharedStore>> + Send + Sync,
         R: Node<Vec<SharedStore>, SharedStore> + Send + Sync,
     {
         let t = Instant::now();
@@ -88,7 +87,7 @@ impl<M, R> MapReduce<M, R> {
 
 impl<M, R> Node<Vec<SharedStore>, SharedStore> for MapReduce<M, R>
 where
-    M: Node<SharedStore, SharedStore> + Send + Sync + Clone,
+    M: Node<Vec<SharedStore>, Vec<SharedStore>> + Send + Sync + Clone,
     R: Node<Vec<SharedStore>, SharedStore> + Send + Sync + Clone,
 {
     fn call(

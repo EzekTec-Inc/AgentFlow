@@ -150,7 +150,9 @@ impl MultiAgent {
             let agent_data = agent_store.read().await;
             let mut merged_store = store.write().await;
             for (key, value) in agent_data.iter() {
-                merged_store.insert(format!("agent_{}.{}", idx, key), value.clone());
+                if snapshot.get(key) != Some(value) {
+                    merged_store.insert(format!("agent_{}.{}", idx, key), value.clone());
+                }
             }
         }
         info!("MultiAgent::run_namespaced complete");

@@ -5,38 +5,19 @@
 # Example: mapreduce.rs
 
 **Purpose:**
-Demonstrates a MapReduce pipeline where a mapper agent summarises each document independently and a reducer agent aggregates all summaries into a final report.
+Shows how to use the MapReduce pattern to process a batch of documents, summarize each with an LLM, and aggregate the results.
 
 **How it works:**
-- Loads a list of documents into the store.
-- Mapper agent runs once per document via `Batch` (sequential) or `ParallelBatch` (concurrent).
-- Each mapped result is stored with a unique key.
-- Reducer agent reads all mapped outputs and produces a single aggregated output.
+- The mapper agent summarizes each document using an LLM.
+- The reducer agent concatenates all summaries into a single string.
+- The MapReduce pattern handles the orchestration.
 
 **How to adapt:**
-- Swap `Batch` for `ParallelBatch` when documents are independent and throughput matters.
-- Replace the reducer with a simple string concatenation node for cheaper aggregation.
-- Use with `ParallelFlow` branches if each document requires a different pipeline.
+- Use this for any batch processing scenario: batch LLM calls, aggregation, analytics.
+- Change the mapper/reducer logic to fit your data and goals.
 
-**Requires:** `OPENAI_API_KEY`
-**Run with:** `cargo run --example mapreduce`
-
----
-
-## Implementation Architecture
-
-```mermaid
-graph TD
-    Docs[(Document List)] --> Batch[Batch / ParallelBatch]
-    Batch -->|doc 1| M1[Mapper Agent<br>summarise 1]
-    Batch -->|doc 2| M2[Mapper Agent<br>summarise 2]
-    Batch -->|doc N| MN[Mapper Agent<br>summarise N]
-    M1 --> Store[(SharedStore<br>mapped results)]
-    M2 --> Store
-    MN --> Store
-    Store --> Reducer[Reducer Agent<br>aggregate]
-    Reducer --> Report[(Final Report)]
-
-    classDef mapred fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
-    class Batch,M1,M2,MN,Reducer mapred;
+**Example:**
+```rust
+let map_reduce = MapReduce::new(batch_mapper, reducer);
+let result = map_reduce.run(inputs).await;
 ```

@@ -13,41 +13,16 @@ use tracing::{debug, warn};
 pub const DEFAULT_TOOL_TIMEOUT: Duration = Duration::from_secs(30);
 
 async fn wait_with_timeout(
-    mut child: Child,
+    child: Child,
     timeout: Duration,
 ) -> Result<std::process::Output, std::io::Error> {
-    let mut stdout = child.stdout.take();
-    let mut stderr = child.stderr.take();
-
-    match tokio::time::timeout(timeout, child.wait()).await {
-        Ok(Ok(status)) => {
-            use tokio::io::AsyncReadExt;
-
-            let mut stdout_buf = Vec::new();
-            let mut stderr_buf = Vec::new();
-
-            if let Some(mut out) = stdout.take() {
-                out.read_to_end(&mut stdout_buf).await?;
-            }
-            if let Some(mut err) = stderr.take() {
-                err.read_to_end(&mut stderr_buf).await?;
-            }
-
-            Ok(std::process::Output {
-                status,
-                stdout: stdout_buf,
-                stderr: stderr_buf,
-            })
-        }
-        Ok(Err(err)) => Err(err),
-        Err(_) => {
-            child.start_kill()?;
-            let _ = child.wait().await;
-            Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                format!("process timed out after {}s", timeout.as_secs()),
-            ))
-        }
+    match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("process timed out after {}s", timeout.as_secs()),
+        )),
     }
 }
 
@@ -107,6 +82,7 @@ pub fn create_tool_node_with_timeout(
             cmd.args(&args);
             cmd.stdout(Stdio::piped());
             cmd.stderr(Stdio::piped());
+            cmd.kill_on_drop(true);
 
             let result = match cmd.spawn() {
                 Ok(child) => wait_with_timeout(child, timeout).await,

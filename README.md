@@ -26,7 +26,7 @@ graph TD
     Patterns["patterns<br>Agent · Workflow · MultiAgent<br>MapReduce · Rag · StructuredOutput"]
     Skills["skills<br>YAML Definitions<br>(feature: skills)"]
     Utils["utils<br>Shell Tools · ToolRegistry<br>create_diff_node · corrective-retry"]
-    MCP["mcp<br>stdio JSON-RPC Server<br>(feature: mcp)"]
+    MCP["mcp<br>stdio JSON-RPC Server & Client<br>(feature: mcp)"]
 
     Core --> Patterns
     Skills --> Patterns

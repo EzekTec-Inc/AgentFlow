@@ -2,7 +2,7 @@
 
 The Model Context Protocol (MCP) is a standardized JSON-RPC protocol over standard input/output (stdio) that allows AI agents and orchestrators to expose and consume external tools in a unified manner.
 
-AgentFlow provides built-in support for MCP via the `McpServer` and `skills` Cargo features. The framework maps internal `SkillTool` objects directly to MCP-compatible tool definitions, allowing seamless execution.
+AgentFlow provides built-in support for MCP via the `McpServer` and `skills` Cargo features, leveraging the `rmcp` crate for transport. The framework maps internal `SkillTool` objects directly to MCP-compatible tool definitions, allowing seamless execution.
 
 This example demonstrates how to spin up an AgentFlow MCP Server that exposes custom tools to external MCP clients (like Claude Desktop or another AgentFlow instance acting as a client).
 

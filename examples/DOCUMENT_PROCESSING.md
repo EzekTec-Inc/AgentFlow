@@ -4,42 +4,18 @@
 
 # Example: document_processing.rs
 
-**Purpose:**
-Implements a document processing pipeline using AgentFlow's `skills` feature. Demonstrates YAML-defined agents and tools processing documents through extraction, context identification, and format conversion.
+Real-world document processing pipeline. The workflow:
 
-**How it works:**
-- Loads a `Skill` definition from `examples/SKILL_DOC_PROCESS.md` (YAML front matter).
-- Parses the skill's tool definitions (e.g., `convert_text` via pandoc, `convert_image` via imagemagick).
-- Builds an AgentFlow pipeline with skill-driven nodes.
-- Processes a document through entity extraction, context identification, and format conversion stages.
+1. **Classify** — detects document type (image vs text) from the file extension
+2. **Extract** — LLM extracts named entities from the document content
+3. **Analyze** — LLM assesses extraction quality and determines semantic context
+4. **Retry** — re-runs extraction up to 3 times if the LLM deems quality poor
+5. **Convert** — runs a real shell tool (`pandoc` for text, `convert` for images)
+   loaded dynamically from `SKILL_DOC_PROCESS.md`
+6. **End** — prints a summary
 
-**How to adapt:**
-- Edit `examples/SKILL_DOC_PROCESS.md` to add tools or change conversions without recompiling.
-- Swap the document input for any file path or URL.
-- Add LLM stages before or after the tool stages for intelligent pre/post-processing.
+Domain: contract / business document processing.
 
-**Requires:** `OPENAI_API_KEY`, `--features skills`
-**Run with:** `cargo run --example document-processing --features skills`
-
-This example depends on the skill definition stored in
-`examples/SKILL_DOC_PROCESS.md`. Update that file to change the configured tool
-commands or conversion steps without recompiling the example.
-
-Primary skill input file: `examples/SKILL_DOC_PROCESS.md`
-
----
-
-## Implementation Architecture
-
-```mermaid
-graph TD
-    YAML[SKILL_DOC_PROCESS.md<br>YAML Skill Definition] -->|parsed| Parser[Skill Parser]
-    Parser --> Tools[Tool Nodes<br>pandoc / imagemagick]
-    Input[(Document<br>Input)] --> Extract[Entity Extraction Node]
-    Extract --> Context[Context Node]
-    Context --> Tools
-    Tools --> Output[(Converted<br>Document)]
-
-    classDef skill fill:#fff8e1,stroke:#ff8f00,stroke-width:2px;
-    class YAML,Parser skill;
-```
+Requires: OPENAI_API_KEY
+Optional: pandoc, imagemagick (falls back to echo mock if not installed)
+Run with: cargo run --example document-processing

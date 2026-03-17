@@ -281,5 +281,5 @@ fn client_info(options: McpClientOptions) -> ClientInfo {
 }
 
 fn content_to_json(content: Content) -> Value {
-    serde_json::to_value(content).unwrap_or_else(|_| Value::Null)
+    serde_json::to_value(content).unwrap_or(Value::Null)
 }

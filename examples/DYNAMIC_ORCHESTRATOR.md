@@ -4,71 +4,16 @@
 
 # Example: dynamic_orchestrator.rs
 
-**Purpose:**
-Demonstrates a fully dynamic, TOML-configured orchestrator that reads its agent registry from `examples/agents.toml` at runtime, so agents can be reconfigured (model, provider, preamble, output key) without recompiling.
+A dynamic orchestrator that reads agent configuration from `examples/agents.toml`
+at runtime. If the file does not exist it is created with defaults before proceeding.
 
-**How it works:**
-1. **Boot** — Checks for `examples/agents.toml`. If missing, writes sensible defaults and prints a notice.
-2. **Parse** — Reads TOML into `Vec<AgentConfig>` and builds an `AgentRegistry` (`HashMap<name, AgentFactory>`).
-3. **Planner node** — LLM receives the list of available agent names and selects a subset + execution order.
-4. **Dispatcher node** — Pops each `AgentSpec` from the plan, looks up the registry, instantiates the agent, and runs it sequentially so each agent can read the previous agent's output key.
-5. **Aggregator node** — LLM synthesises all `output_key` values from the store into a final report.
+How it works:
+1. Boot       — load (or create) `examples/agents.toml`, build an AgentRegistry.
+2. Planner    — LLM receives the goal + available agent names, returns a JSON array
+   of { name, prompt } objects selecting which agents to run and in what order.
+3. Dispatcher — pops one AgentSpec per cycle, looks it up in the registry, runs it,
+   appends the result; loops until the plan is empty.
+4. Aggregator — LLM synthesises every agent result into a final report.
 
-**How to adapt:**
-- Edit `examples/agents.toml` to add, remove, or change agents without touching Rust source.
-- Add a `gemini` provider variant to `AgentConfig` and the factory to route to a Gemini client.
-- Replace the sequential dispatcher with `ParallelFlow` for independent agents.
-
-**Requires:** `OPENAI_API_KEY`
-**Run with:** `cargo run --example dynamic-orchestrator`
-
-On first run, the example checks for its runtime config file and writes a
-default one if it is missing. Update the generated TOML file to change models,
-providers, prompts, or output keys without recompiling the Rust example.
-
-Runtime config path: `examples/agents.toml`
-
----
-
-## TOML Schema (`examples/agents.toml`)
-
-```toml
-[[agent]]
-name        = "researcher"
-provider    = "openai"
-model       = "gpt-4o-mini"
-preamble    = "You are a concise research assistant."
-output_key  = "research_result"
-
-[[agent]]
-name        = "coder"
-provider    = "openai"
-model       = "gpt-4o-mini"
-preamble    = "You are a senior Rust developer."
-output_key  = "code_result"
-
-[[agent]]
-name        = "reviewer"
-provider    = "openai"
-model       = "gpt-4o-mini"
-preamble    = "You are a thorough code reviewer."
-output_key  = "review_result"
-```
-
----
-
-## Implementation Architecture
-
-```mermaid
-graph TD
-    TOML[agents.toml] -->|parsed| Registry[AgentRegistry<br>HashMap]
-    Registry --> Planner[Planner Node<br>LLM selects agents]
-    Planner --> Dispatcher[Dispatcher Node<br>sequential agent loop]
-    Dispatcher -->|reads prev output| AgentN[Agent N<br>from registry]
-    AgentN -->|writes output_key| Store[(SharedStore)]
-    Store --> Aggregator[Aggregator Node<br>LLM synthesises]
-    Aggregator --> Report[(Final Report)]
-
-    classDef dynamic fill:#fce4ec,stroke:#880e4f,stroke-width:2px;
-    class TOML,Registry,Dispatcher dynamic;
-```
+Requires: OPENAI_API_KEY
+Run with: cargo run --example dynamic-orchestrator

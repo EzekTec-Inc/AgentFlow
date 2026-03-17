@@ -134,7 +134,7 @@ where
                 let node = node.clone();
                 async move { node.call(store).await }
             }));
-            stream.buffer_unordered(limit).collect().await
+            stream.buffered(limit).collect().await
         })
     }
 }

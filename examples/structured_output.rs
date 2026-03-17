@@ -266,16 +266,9 @@ async fn process_topic(topic: String) -> Option<serde_json::Value> {
     let mut store = HashMap::new();
     store.insert("topic".to_string(), Value::String(topic.to_string()));
 
-    let result = match pipeline
+    let result = pipeline
         .generate(std::sync::Arc::new(tokio::sync::RwLock::new(store)))
-        .await
-    {
-        Ok(result_store) => result_store,
-        Err(e) => {
-            println!("Validation error: {}", e);
-            return None;
-        }
-    };
+        .await;
 
     let locked = result.write().await;
     if let Some(error) = locked.get("error") {

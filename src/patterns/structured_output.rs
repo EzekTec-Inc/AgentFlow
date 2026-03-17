@@ -44,14 +44,12 @@ impl<N> StructuredOutput<N> {
         Self { node }
     }
 
-    /// Execute the inner node and return the store, or an error string if the
-    /// node call fails.
-    pub async fn generate(&self, prompt: SharedStore) -> Result<SharedStore, String>
+    /// Execute the inner node and return the store.
+    pub async fn generate(&self, prompt: SharedStore) -> SharedStore
     where
         N: Node<SharedStore, SharedStore>,
     {
-        let raw = self.node.call(prompt).await;
-        Ok(raw)
+        self.node.call(prompt).await
     }
 }
 
@@ -61,9 +59,7 @@ where
 {
     fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
         Box::pin(async move {
-            self.generate(input).await.unwrap_or_else(|_| {
-                std::sync::Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()))
-            })
+            self.generate(input).await
         })
     }
 }

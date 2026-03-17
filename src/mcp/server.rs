@@ -22,41 +22,16 @@ const RESOURCE_URI_PREFIX: &str = "agentflow://skill";
 const BLOCKED_SHELL_COMMANDS: &[&str] = &["sh", "bash", "cmd", "powershell", "pwsh"];
 
 async fn wait_with_timeout(
-    mut child: Child,
+    child: Child,
     timeout: Duration,
 ) -> Result<std::process::Output, std::io::Error> {
-    let mut stdout = child.stdout.take();
-    let mut stderr = child.stderr.take();
-
-    match tokio::time::timeout(timeout, child.wait()).await {
-        Ok(Ok(status)) => {
-            use tokio::io::AsyncReadExt;
-
-            let mut stdout_buf = Vec::new();
-            let mut stderr_buf = Vec::new();
-
-            if let Some(mut out) = stdout.take() {
-                out.read_to_end(&mut stdout_buf).await?;
-            }
-            if let Some(mut err) = stderr.take() {
-                err.read_to_end(&mut stderr_buf).await?;
-            }
-
-            Ok(std::process::Output {
-                status,
-                stdout: stdout_buf,
-                stderr: stderr_buf,
-            })
-        }
-        Ok(Err(err)) => Err(err),
-        Err(_) => {
-            child.start_kill()?;
-            let _ = child.wait().await;
-            Err(std::io::Error::new(
-                std::io::ErrorKind::TimedOut,
-                format!("process timed out after {}s", timeout.as_secs()),
-            ))
-        }
+    match tokio::time::timeout(timeout, child.wait_with_output()).await {
+        Ok(Ok(output)) => Ok(output),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!("process timed out after {}s", timeout.as_secs()),
+        )),
     }
 }
 
@@ -117,92 +92,78 @@ impl ServerHandler for McpServer {
         }
     }
 
-    fn list_tools(
+    async fn list_tools(
         &self,
         _request: Option<rmcp::model::PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ListToolsResult, rmcp::ErrorData>> + Send + '_
-    {
-        async move {
-            let tools: Vec<Tool> = self
-                .skills
-                .iter()
-                .flat_map(|skill| skill.tools.iter().flatten())
-                .map(|tool| {
-                    let description = tool.description.clone().map(Cow::Owned);
-                    Tool {
-                        name: Cow::Owned(tool.name.clone()),
-                        description,
-                        input_schema: Arc::new(tool_input_schema(tool)),
-                        annotations: None,
-                    }
-                })
-                .collect();
-
-            debug!(count = tools.len(), "McpServer tools/list");
-            Ok(ListToolsResult::with_all_items(tools))
-        }
-    }
-
-    fn list_resources(
-        &self,
-        _request: Option<rmcp::model::PaginatedRequestParam>,
-        _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ListResourcesResult, rmcp::ErrorData>> + Send + '_
-    {
-        async move {
-            let resources = build_resources(&self.skills);
-            debug!(count = resources.len(), "McpServer resources/list");
-            Ok(ListResourcesResult {
-                resources,
-                next_cursor: None,
+    ) -> Result<ListToolsResult, rmcp::ErrorData> {
+        let tools: Vec<Tool> = self
+            .skills
+            .iter()
+            .flat_map(|skill| skill.tools.iter().flatten())
+            .map(|tool| {
+                let description = tool.description.clone().map(Cow::Owned);
+                Tool {
+                    name: Cow::Owned(tool.name.clone()),
+                    description,
+                    input_schema: Arc::new(tool_input_schema(tool)),
+                    annotations: None,
+                }
             })
-        }
+            .collect();
+
+        debug!(count = tools.len(), "McpServer tools/list");
+        Ok(ListToolsResult::with_all_items(tools))
     }
 
-    fn read_resource(
+    async fn list_resources(
+        &self,
+        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, rmcp::ErrorData> {
+        let resources = build_resources(&self.skills);
+        debug!(count = resources.len(), "McpServer resources/list");
+        Ok(ListResourcesResult {
+            resources,
+            next_cursor: None,
+        })
+    }
+
+    async fn read_resource(
         &self,
         request: ReadResourceRequestParam,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ReadResourceResult, rmcp::ErrorData>> + Send + '_
-    {
-        async move {
-            let uri = request.uri.to_string();
-            match render_resource_contents(&self.skills, &uri) {
-                Some(text) => Ok(ReadResourceResult {
-                    contents: vec![ResourceContents::text(text, request.uri)],
-                }),
-                None => Err(rmcp::ErrorData::resource_not_found(
-                    "resource_not_found",
-                    Some(json!({ "uri": uri })),
-                )),
-            }
+    ) -> Result<ReadResourceResult, rmcp::ErrorData> {
+        let uri = request.uri.to_string();
+        match render_resource_contents(&self.skills, &uri) {
+            Some(text) => Ok(ReadResourceResult {
+                contents: vec![ResourceContents::text(text, request.uri)],
+            }),
+            None => Err(rmcp::ErrorData::resource_not_found(
+                "resource_not_found",
+                Some(json!({ "uri": uri })),
+            )),
         }
     }
 
-    fn list_resource_templates(
+    async fn list_resource_templates(
         &self,
         _request: Option<rmcp::model::PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<ListResourceTemplatesResult, rmcp::ErrorData>> + Send + '_
-    {
-        async move {
-            Ok(ListResourceTemplatesResult {
-                resource_templates: Vec::new(),
-                next_cursor: None,
-            })
-        }
+    ) -> Result<ListResourceTemplatesResult, rmcp::ErrorData> {
+        Ok(ListResourceTemplatesResult {
+            resource_templates: Vec::new(),
+            next_cursor: None,
+        })
     }
 
-    fn call_tool(
+    async fn call_tool(
         &self,
         request: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::ErrorData>> + Send + '_
-    {
-        async move {
-            let tool_name = request.name.as_ref();
-            let arguments = request.arguments.unwrap_or_default();
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let tool_name = request.name.as_ref();
+        let arguments = request.arguments.unwrap_or_default();
 
             let matched_tool = self.skills.iter().find_map(|skill| {
                 skill
@@ -247,6 +208,7 @@ impl ServerHandler for McpServer {
                         .args(&final_args)
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
+                        .kill_on_drop(true)
                         .spawn()
                     {
                         Ok(child) => wait_with_timeout(child, MCP_TOOL_TIMEOUT).await,
@@ -298,7 +260,6 @@ impl ServerHandler for McpServer {
                     ))]))
                 }
             }
-        }
     }
 }
 
@@ -539,6 +500,7 @@ fn parse_resource_uri(uri: &str) -> Option<ParsedResourceUri> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::{
         build_resources, extract_placeholders, render_resource_contents, skill_resource_uri,

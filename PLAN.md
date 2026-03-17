@@ -916,3 +916,17 @@ Replaced one-line comment with full section that:
 * **Previous behavior:** `McpClient` supported only `list_tools`, `call_tool`, and `shutdown`, so callers had no crate-level helper for MCP resource discovery or reading.
 * **New behavior:** `McpClient` now supports `list_resources` and `read_resource`, returning owned serializable AgentFlow types. Integration coverage now verifies the example server exposes and serves skill/tool resources.
 * **Rollback instructions:** Revert the changes in `src/mcp/client.rs`, `src/mcp/mod.rs`, and `tests/mcp_integration.rs`; remove this appended PLAN entry.
+
+### Step 9.4: Synchronize Documentation and Generate Status Report
+* **Timestamp (UTC):** 2026-03-17T18:00:00Z
+* **Summary of change:** Updated all `.md` files to reflect recent framework changes (MCP optionality, Flow node routing safety, Batch processing logic, StructuredOutput updates, MultiAgent). Generated a comprehensive `report.md`.
+* **Files modified:**
+  - `README.md`
+  - `ARCHITECTURE.md`
+  - `report.md`
+  - `examples/*.md` (regenerated using custom python extraction script)
+  - `examples/MCP_SERVER.md`
+* **Exact reason:** Ensure all developer documentation remains perfectly aligned with the source code after major execution and MCP changes.
+* **Previous behavior:** Outdated MCP dependencies listed, missing architectural additions, old example docs.
+* **New behavior:** All docs accurately reflect `rmcp` optionality, strictly typed error outputs, and the updated node structure.
+* **Rollback instructions:** Revert `.md` modifications and delete `report.md`.

@@ -120,7 +120,7 @@ impl Flow {
             self.start_node = Some(name.to_string());
         }
         self.nodes.insert(name.to_string(), node);
-        self.edges.insert(name.to_string(), HashMap::new());
+        self.edges.entry(name.to_string()).or_default();
     }
 
     /// Explicitly set (or override) the start node.

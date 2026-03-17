@@ -52,13 +52,14 @@ src/
 │   ├── multi_agent.rs   MultiAgent (Shared / Namespaced / Custom)
 │   ├── rag.rs           Rag
 │   ├── mapreduce.rs     MapReduce
-│   ├── structured_output.rs
+│   ├── batchflow.rs     BatchFlow
+│   ├── structured_output.rs StructuredOutput
 │   └── rpi.rs           RpiWorkflow
 ├── utils/
 │   └── tool.rs          create_tool_node, ToolRegistry,
 │                        create_corrective_retry_node
 ├── skills/              (feature: skills) YAML skill parser
-└── mcp/                 (feature: mcp) MCP stdio server
+└── mcp/                 (feature: mcp) MCP stdio server and client
 ```
 
 ---
