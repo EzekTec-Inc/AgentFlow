@@ -976,3 +976,15 @@ Replaced one-line comment with full section that:
 - **Previous behavior:** HITL code existed but lacked a registered example. Code was slightly misformatted.
 - **New behavior:** The `hitl` example can be run via `cargo run --example hitl`. All codebase files adhere to standard Rust formatting.
 - **Rollback instructions:** Revert this commit using `git revert HEAD`.
+
+## [2026-03-18T20:35:00Z] Implement Security Review Recommendations
+- **Timestamp (UTC):** 2026-03-18T20:35:00Z
+- **Summary of change:** Expanded blocked shell list in `McpServer` and added bearer token authentication to `local-axum-server`. Updated dependencies.
+- **Files modified:**
+  - `src/mcp/server.rs`
+  - `tools/local-axum-server.rs`
+  - `Cargo.lock`
+- **Exact reason:** Remediate potential unauthenticated RCE risk in the local tool server and improve the strictness of MCP shell blocking.
+- **Previous behavior:** `local-axum-server` executed commands without authentication. Blocked shells list was missing common variants.
+- **New behavior:** `local-axum-server` requires `AGENTFLOW_AUTH_TOKEN` or generates a one-time token printed to stdout. Blocked shells list includes zsh, fish, ash, etc.
+- **Rollback instructions:** Revert this commit using `git revert HEAD`.

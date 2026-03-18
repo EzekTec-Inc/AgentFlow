@@ -19,7 +19,9 @@ use tracing::{debug, warn};
 /// Default timeout for MCP tool execution (30 seconds).
 const MCP_TOOL_TIMEOUT: Duration = Duration::from_secs(30);
 const RESOURCE_URI_PREFIX: &str = "agentflow://skill";
-const BLOCKED_SHELL_COMMANDS: &[&str] = &["sh", "bash", "cmd", "powershell", "pwsh"];
+const BLOCKED_SHELL_COMMANDS: &[&str] = &[
+    "sh", "bash", "cmd", "powershell", "pwsh", "zsh", "fish", "dash", "ash", "csh", "tcsh", "ksh",
+];
 
 async fn wait_with_timeout(
     child: Child,
