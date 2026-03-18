@@ -60,6 +60,7 @@ impl NodeResult<SharedStore, SharedStore> for SkillToolNode {
             info!("Executing skill tool: {}", tool.name);
             let mut cmd = Command::new(&tool.command);
             cmd.args(&tool.args);
+            cmd.kill_on_drop(true);
 
             match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), cmd.output())
                 .await
