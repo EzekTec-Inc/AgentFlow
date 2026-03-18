@@ -69,7 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 println!("[Classify] '{}' → type={}", file_path, doc_type);
-                //NOTE: the write lock is acquired here.
+                //NOTE: Stephen Ezekwem - March 17, 2026 @ 4:43 PM - the write lock is acquired here.
                 let mut g = store.write().await;
                 g.insert("doc_type".to_string(), Value::String(doc_type.to_string()));
                 g.insert("action".to_string(), Value::String(action.to_string()));

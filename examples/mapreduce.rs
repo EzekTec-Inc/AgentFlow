@@ -27,6 +27,23 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+// Implement an enum to hold the keys and values of SharedStore
+#[derive(Debug)]
+enum SharedStoreKey {
+    Doc,
+    Summary,
+    AllSummaries,
+}
+impl std::fmt::Display for SharedStoreKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SharedStoreKey::Doc => write!(f, "doc"),
+            SharedStoreKey::Summary => write!(f, "summary"),
+            SharedStoreKey::AllSummaries => write!(f, "all_summaries"),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // Prepare a batch of documents as input
@@ -40,7 +57,10 @@ async fn main() {
         .into_iter()
         .map(|doc| {
             let mut map = HashMap::new();
-            map.insert("doc".to_string(), Value::String(doc.to_string()));
+            map.insert(
+                SharedStoreKey::Doc.to_string(),
+                Value::String(doc.to_string()),
+            );
             Arc::new(tokio::sync::RwLock::new(map))
         })
         .collect();
@@ -51,7 +71,7 @@ async fn main() {
             let doc = {
                 let guard = store.write().await;
                 guard
-                    .get("doc")
+                    .get(SharedStoreKey::Doc.to_string().as_str())
                     .and_then(|v| v.as_str())
                     .unwrap_or("")
                     .to_string()
@@ -72,7 +92,7 @@ async fn main() {
             store
                 .write()
                 .await
-                .insert("summary".to_string(), Value::String(summary));
+                .insert(SharedStoreKey::Summary.to_string(), Value::String(summary));
             store
         })
     });
@@ -85,7 +105,7 @@ async fn main() {
                 let summary = {
                     let guard = s.write().await;
                     guard
-                        .get("summary")
+                        .get(SharedStoreKey::Summary.to_string().as_str())
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string())
                 };
@@ -95,7 +115,7 @@ async fn main() {
             }
             let mut result = HashMap::new();
             result.insert(
-                "all_summaries".to_string(),
+                SharedStoreKey::AllSummaries.to_string(),
                 Value::String(all_summaries.join("\n")),
             );
             Arc::new(tokio::sync::RwLock::new(result))
@@ -115,6 +135,8 @@ async fn main() {
 
     println!(
         "All Summaries:\n{}",
-        result_map.get("all_summaries").unwrap()
+        result_map
+            .get(SharedStoreKey::AllSummaries.to_string().as_str())
+            .unwrap()
     );
 }
