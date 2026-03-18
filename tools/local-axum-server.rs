@@ -58,7 +58,9 @@ async fn run_handler(Json(payload): Json<RunRequest>) -> Json<RunResponse> {
             Json(RunResponse {
                 status: "success".to_string(),
                 tools_found: tools.len(),
-                result: Some(json!({"prompt": payload.prompt, "tools": tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>()})),
+                result: Some(
+                    json!({"prompt": payload.prompt, "tools": tools.iter().map(|t| t.name.clone()).collect::<Vec<_>>()}),
+                ),
                 error: None,
             })
         }
@@ -87,6 +89,10 @@ mod tests {
         };
         let res = run_handler(Json(req)).await;
         assert_eq!(res.status, "error");
-        assert!(res.error.as_ref().unwrap().contains("No such file or directory"));
+        assert!(res
+            .error
+            .as_ref()
+            .unwrap()
+            .contains("No such file or directory"));
     }
 }

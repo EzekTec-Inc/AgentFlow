@@ -239,8 +239,9 @@ impl McpClient {
     }
 
     fn convert_resource(resource: Resource) -> Result<McpResource, AgentFlowError> {
-        let raw = serde_json::to_value(&resource)
-            .map_err(|e| AgentFlowError::Custom(format!("Failed to serialize MCP resource: {e}")))?;
+        let raw = serde_json::to_value(&resource).map_err(|e| {
+            AgentFlowError::Custom(format!("Failed to serialize MCP resource: {e}"))
+        })?;
 
         serde_json::from_value(raw)
             .map_err(|e| AgentFlowError::Custom(format!("Failed to deserialize MCP resource: {e}")))

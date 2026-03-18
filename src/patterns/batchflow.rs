@@ -30,13 +30,13 @@ impl BatchFlow {
             debug!(batch_index = i, "BatchFlow: running batch item");
             let mut wf = self.workflow.clone();
             wf.set_params(params);
-            
+
             // Snapshot the shared store for this item
             let item_store = {
                 let guard = shared.read().await;
                 std::sync::Arc::new(tokio::sync::RwLock::new(guard.clone()))
             };
-            
+
             {
                 let mut store = item_store.write().await;
                 for (k, v) in wf.params.iter() {

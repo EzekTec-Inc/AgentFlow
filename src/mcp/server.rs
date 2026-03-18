@@ -165,101 +165,100 @@ impl ServerHandler for McpServer {
         let tool_name = request.name.as_ref();
         let arguments = request.arguments.unwrap_or_default();
 
-            let matched_tool = self.skills.iter().find_map(|skill| {
-                skill
-                    .tools
-                    .iter()
-                    .flatten()
-                    .find(|tool| tool.name == tool_name)
-            });
+        let matched_tool = self.skills.iter().find_map(|skill| {
+            skill
+                .tools
+                .iter()
+                .flatten()
+                .find(|tool| tool.name == tool_name)
+        });
 
-            match matched_tool {
-                Some(tool) => {
-                    debug!(tool = %tool.name, "McpServer executing tool");
+        match matched_tool {
+            Some(tool) => {
+                debug!(tool = %tool.name, "McpServer executing tool");
 
-                    if let Err(message) = validate_tool_arguments(tool, &arguments) {
-                        warn!(tool = %tool.name, error = %message, "McpServer invalid tool arguments");
-                        return Ok(CallToolResult::error(vec![Content::text(message)]));
-                    }
-
-                    if is_blocked_shell_command(&tool.command) {
-                        warn!(tool = %tool.name, command = %tool.command, "McpServer blocked shell-based tool execution");
-                        return Ok(CallToolResult::error(vec![Content::text(format!(
-                            "Tool '{}' uses blocked shell command '{}'",
-                            tool.name, tool.command
-                        ))]));
-                    }
-
-                    let mut final_args = Vec::new();
-                    for arg in &tool.args {
-                        let mut modified_arg = arg.clone();
-                        for (k, v) in &arguments {
-                            let val_str = match v {
-                                serde_json::Value::String(s) => s.clone(),
-                                other => other.to_string(),
-                            };
-                            modified_arg =
-                                modified_arg.replace(&format!("{{{{{}}}}}", k), &val_str);
-                        }
-                        final_args.push(modified_arg);
-                    }
-
-                    let result = match tokio::process::Command::new(&tool.command)
-                        .args(&final_args)
-                        .stdout(Stdio::piped())
-                        .stderr(Stdio::piped())
-                        .kill_on_drop(true)
-                        .spawn()
-                    {
-                        Ok(child) => wait_with_timeout(child, MCP_TOOL_TIMEOUT).await,
-                        Err(err) => Err(err),
-                    };
-
-                    match result {
-                        Ok(output) => {
-                            let stdout_str = String::from_utf8_lossy(&output.stdout).to_string();
-                            let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
-                            let status = output.status.code().unwrap_or(-1);
-
-                            let payload = serde_json::json!({
-                                "stdout": stdout_str,
-                                "stderr": stderr_str,
-                                "exitCode": status,
-                            });
-
-                            let content = Content::json(payload).unwrap_or_else(|_| {
-                                Content::text(format!(
-                                    "tool={} exitCode={} stderr={} stdout={}",
-                                    tool.name, status, stderr_str, stdout_str
-                                ))
-                            });
-
-                            Ok(if output.status.success() {
-                                CallToolResult::success(vec![content])
-                            } else {
-                                CallToolResult::error(vec![content])
-                            })
-                        }
-                        Err(err) if err.kind() != std::io::ErrorKind::TimedOut => {
-                            Ok(CallToolResult::error(vec![Content::text(format!(
-                                "Failed to execute tool '{}': {err}",
-                                tool.name
-                            ))]))
-                        }
-                        Err(_) => Ok(CallToolResult::error(vec![Content::text(format!(
-                            "Tool '{}' timed out after {} seconds",
-                            tool.name,
-                            MCP_TOOL_TIMEOUT.as_secs()
-                        ))])),
-                    }
+                if let Err(message) = validate_tool_arguments(tool, &arguments) {
+                    warn!(tool = %tool.name, error = %message, "McpServer invalid tool arguments");
+                    return Ok(CallToolResult::error(vec![Content::text(message)]));
                 }
-                None => {
-                    warn!(tool = tool_name, "McpServer tool not found");
-                    Ok(CallToolResult::error(vec![Content::text(format!(
-                        "Tool not found: {tool_name}"
-                    ))]))
+
+                if is_blocked_shell_command(&tool.command) {
+                    warn!(tool = %tool.name, command = %tool.command, "McpServer blocked shell-based tool execution");
+                    return Ok(CallToolResult::error(vec![Content::text(format!(
+                        "Tool '{}' uses blocked shell command '{}'",
+                        tool.name, tool.command
+                    ))]));
+                }
+
+                let mut final_args = Vec::new();
+                for arg in &tool.args {
+                    let mut modified_arg = arg.clone();
+                    for (k, v) in &arguments {
+                        let val_str = match v {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        };
+                        modified_arg = modified_arg.replace(&format!("{{{{{}}}}}", k), &val_str);
+                    }
+                    final_args.push(modified_arg);
+                }
+
+                let result = match tokio::process::Command::new(&tool.command)
+                    .args(&final_args)
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .kill_on_drop(true)
+                    .spawn()
+                {
+                    Ok(child) => wait_with_timeout(child, MCP_TOOL_TIMEOUT).await,
+                    Err(err) => Err(err),
+                };
+
+                match result {
+                    Ok(output) => {
+                        let stdout_str = String::from_utf8_lossy(&output.stdout).to_string();
+                        let stderr_str = String::from_utf8_lossy(&output.stderr).to_string();
+                        let status = output.status.code().unwrap_or(-1);
+
+                        let payload = serde_json::json!({
+                            "stdout": stdout_str,
+                            "stderr": stderr_str,
+                            "exitCode": status,
+                        });
+
+                        let content = Content::json(payload).unwrap_or_else(|_| {
+                            Content::text(format!(
+                                "tool={} exitCode={} stderr={} stdout={}",
+                                tool.name, status, stderr_str, stdout_str
+                            ))
+                        });
+
+                        Ok(if output.status.success() {
+                            CallToolResult::success(vec![content])
+                        } else {
+                            CallToolResult::error(vec![content])
+                        })
+                    }
+                    Err(err) if err.kind() != std::io::ErrorKind::TimedOut => {
+                        Ok(CallToolResult::error(vec![Content::text(format!(
+                            "Failed to execute tool '{}': {err}",
+                            tool.name
+                        ))]))
+                    }
+                    Err(_) => Ok(CallToolResult::error(vec![Content::text(format!(
+                        "Tool '{}' timed out after {} seconds",
+                        tool.name,
+                        MCP_TOOL_TIMEOUT.as_secs()
+                    ))])),
                 }
             }
+            None => {
+                warn!(tool = tool_name, "McpServer tool not found");
+                Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Tool not found: {tool_name}"
+                ))]))
+            }
+        }
     }
 }
 
@@ -392,7 +391,9 @@ fn build_resources(skills: &[Skill]) -> Vec<Resource> {
 
 fn render_resource_contents(skills: &[Skill], uri: &str) -> Option<String> {
     let parsed = parse_resource_uri(uri)?;
-    let skill = skills.iter().find(|skill| slugify(&skill.name) == parsed.skill_slug)?;
+    let skill = skills
+        .iter()
+        .find(|skill| slugify(&skill.name) == parsed.skill_slug)?;
 
     match parsed.kind {
         ResourceKind::Skill => Some(render_skill_resource(skill)),
@@ -465,7 +466,13 @@ fn tool_resource_uri(skill: &Skill, tool_name: &str) -> String {
 fn slugify(input: &str) -> String {
     input
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .split('-')
         .filter(|segment| !segment.is_empty())
@@ -540,22 +547,34 @@ mod tests {
             "prefix-{{url}}-suffix".to_string(),
         ]);
 
-        assert_eq!(placeholders, vec!["output_path".to_string(), "url".to_string()]);
+        assert_eq!(
+            placeholders,
+            vec!["output_path".to_string(), "url".to_string()]
+        );
     }
 
     #[test]
     fn builds_schema_with_required_string_properties() {
         let schema = tool_input_schema(&sample_tool());
 
-        assert_eq!(schema.get("type"), Some(&Value::String("object".to_string())));
-        assert_eq!(schema.get("additionalProperties"), Some(&Value::Bool(false)));
+        assert_eq!(
+            schema.get("type"),
+            Some(&Value::String("object".to_string()))
+        );
+        assert_eq!(
+            schema.get("additionalProperties"),
+            Some(&Value::Bool(false))
+        );
 
         let properties = schema
             .get("properties")
             .and_then(Value::as_object)
             .expect("properties object");
         assert_eq!(properties.len(), 2);
-        assert_eq!(properties["url"]["type"], Value::String("string".to_string()));
+        assert_eq!(
+            properties["url"]["type"],
+            Value::String("string".to_string())
+        );
         assert_eq!(
             properties["output_path"]["type"],
             Value::String("string".to_string())
@@ -617,8 +636,14 @@ mod tests {
         let resources = build_resources(&[skill]);
 
         assert_eq!(resources.len(), 2);
-        assert_eq!(resources[0].uri.as_str(), "agentflow://skill/goa-research-tools/overview");
-        assert_eq!(resources[1].uri.as_str(), "agentflow://skill/goa-research-tools/tool/fetch-url");
+        assert_eq!(
+            resources[0].uri.as_str(),
+            "agentflow://skill/goa-research-tools/overview"
+        );
+        assert_eq!(
+            resources[1].uri.as_str(),
+            "agentflow://skill/goa-research-tools/tool/fetch-url"
+        );
     }
 
     #[test]
@@ -643,4 +668,3 @@ mod tests {
         assert!(content.contains("Placeholders: output_path, url"));
     }
 }
-

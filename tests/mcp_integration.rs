@@ -29,7 +29,9 @@ async fn mcp_client_server_round_trip_covers_schema_success_and_validation_error
 
     let tools = client.list_tools().await.expect("list MCP tools");
     assert!(tools.iter().any(|tool| tool.name == "crawl_goa_url"));
-    assert!(tools.iter().any(|tool| tool.name == "render_report_summary"));
+    assert!(tools
+        .iter()
+        .any(|tool| tool.name == "render_report_summary"));
 
     let resources = client.list_resources().await.expect("list MCP resources");
     assert!(resources
@@ -43,7 +45,8 @@ async fn mcp_client_server_round_trip_covers_schema_success_and_validation_error
         .read_resource("agentflow://skill/goaresearchtools/overview")
         .await
         .expect("read MCP skill overview resource");
-    let overview_payload = serde_json::to_string(&overview.contents).expect("serialize overview contents");
+    let overview_payload =
+        serde_json::to_string(&overview.contents).expect("serialize overview contents");
     assert!(overview_payload.contains("Skill: GoAResearchTools"));
     assert!(overview_payload.contains("render_report_summary"));
 
@@ -61,9 +64,15 @@ async fn mcp_client_server_round_trip_covers_schema_success_and_validation_error
         .find(|tool| tool.name == "crawl_goa_url")
         .expect("crawl_goa_url tool present");
     assert_eq!(crawl_tool.input_schema["type"], json!("object"));
-    assert_eq!(crawl_tool.input_schema["properties"]["url"]["type"], json!("string"));
+    assert_eq!(
+        crawl_tool.input_schema["properties"]["url"]["type"],
+        json!("string")
+    );
     assert_eq!(crawl_tool.input_schema["required"], json!(["url"]));
-    assert_eq!(crawl_tool.input_schema["additionalProperties"], json!(false));
+    assert_eq!(
+        crawl_tool.input_schema["additionalProperties"],
+        json!(false)
+    );
 
     let missing_arg = client
         .call_tool("crawl_goa_url", json!({}))
@@ -93,7 +102,8 @@ async fn mcp_client_server_round_trip_covers_schema_success_and_validation_error
         .await
         .expect("successful render_report_summary call");
     assert_ne!(success.is_error, Some(true));
-    let success_payload = serde_json::to_value(&success.content).expect("serialize success content");
+    let success_payload =
+        serde_json::to_value(&success.content).expect("serialize success content");
     let success_payload_text = success_payload.to_string();
     assert!(success_payload_text.contains("Report ready: GoA Design System Report"));
     assert!(success_payload_text.contains("exitCode"));

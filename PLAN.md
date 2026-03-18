@@ -963,3 +963,16 @@ Replaced one-line comment with full section that:
 - **New behavior:** `.cade-db.key` is ignored by Git.
 - **Rollback instructions:** Remove `.cade-db.key` from `.gitignore`.
 
+
+## [2026-03-18T20:14:00Z] Finalize HITL feature with example and format code
+- **Timestamp (UTC):** 2026-03-18T20:14:00Z
+- **Summary of change:** Added `hitl.rs` example and `HITL.md` docs to demonstrate the Human-in-the-Loop pattern. Formatted codebase using `cargo fmt`. Registered the `hitl` example in `Cargo.toml`.
+- **Files modified:**
+  - `Cargo.toml`
+  - `examples/hitl.rs` (new)
+  - `examples/HITL.md` (new)
+  - Various `.rs` files (formatted)
+- **Exact reason:** The HITL feature was implemented in the previous commit, but its illustrative example and documentation were untracked, and code was unformatted.
+- **Previous behavior:** HITL code existed but lacked a registered example. Code was slightly misformatted.
+- **New behavior:** The `hitl` example can be run via `cargo run --example hitl`. All codebase files adhere to standard Rust formatting.
+- **Rollback instructions:** Revert this commit using `git revert HEAD`.

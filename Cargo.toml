@@ -143,6 +143,10 @@ name = "mcp_server_blocked_shell"
 path = "examples/mcp_server_blocked_shell.rs"
 required-features = ["mcp", "skills"]
 
+[[example]]
+name = "hitl"
+path = "examples/hitl.rs"
+
 [[bin]]
 name = "local-axum-server"
 path = "tools/local-axum-server.rs"

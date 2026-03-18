@@ -58,8 +58,6 @@ where
     N: Node<SharedStore, SharedStore> + Clone,
 {
     fn call(&self, input: SharedStore) -> Pin<Box<dyn Future<Output = SharedStore> + Send + '_>> {
-        Box::pin(async move {
-            self.generate(input).await
-        })
+        Box::pin(async move { self.generate(input).await })
     }
 }

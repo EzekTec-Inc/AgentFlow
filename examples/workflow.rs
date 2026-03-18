@@ -202,7 +202,9 @@ async fn main() {
         let node = workflow.get_node(&step).unwrap();
         let result = match node {
             agentflow::core::flow::FlowNode::Simple(n) => n.call(last_result.clone()).await,
-            agentflow::core::flow::FlowNode::Result(n) => n.call(last_result.clone()).await.unwrap(),
+            agentflow::core::flow::FlowNode::Result(n) => {
+                n.call(last_result.clone()).await.unwrap()
+            }
         };
 
         // Present result to user and get action

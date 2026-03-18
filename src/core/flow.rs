@@ -58,7 +58,8 @@ pub type FlowHookFn = std::sync::Arc<
     dyn Fn(
             &str,
             SharedStore,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = SharedStore> + Send + 'static>>
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = SharedStore> + Send + 'static>>
         + Send
         + Sync,
 >;
@@ -282,7 +283,7 @@ impl Flow {
                             break;
                         }
                     }
-                }
+                },
             };
 
             if let Some(hook) = &self.post_node_hook {

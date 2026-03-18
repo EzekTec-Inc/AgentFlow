@@ -60,7 +60,8 @@ pub type TypedFlowHookFn<T> = std::sync::Arc<
     dyn Fn(
             &str,
             TypedStore<T>,
-        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = TypedStore<T>> + Send + 'static>>
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = TypedStore<T>> + Send + 'static>>
         + Send
         + Sync,
 >;
