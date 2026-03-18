@@ -200,7 +200,10 @@ async fn main() {
     while let Some(step) = current_step.clone() {
         // Run the current step
         let node = workflow.get_node(&step).unwrap();
-        let result = node.call(last_result.clone()).await;
+        let result = match node {
+            agentflow::core::flow::FlowNode::Simple(n) => n.call(last_result.clone()).await,
+            agentflow::core::flow::FlowNode::Result(n) => n.call(last_result.clone()).await.unwrap(),
+        };
 
         // Present result to user and get action
         let locked = result.write().await;

@@ -55,6 +55,16 @@ where
 /// Closure type used to choose the next node given the current state.
 pub type TransitionFn<T> = Arc<dyn Fn(&T) -> Option<String> + Send + Sync>;
 
+/// Asynchronous hook function type for `TypedFlow`.
+pub type TypedFlowHookFn<T> = std::sync::Arc<
+    dyn Fn(
+            &str,
+            TypedStore<T>,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = TypedStore<T>> + Send + 'static>>
+        + Send
+        + Sync,
+>;
+
 /// A flow orchestrator that strictly uses `TypedStore<T>`
 pub struct TypedFlow<T> {
     nodes: HashMap<String, SimpleTypedNode<T>>,
@@ -62,6 +72,10 @@ pub struct TypedFlow<T> {
     start_node: Option<String>,
     /// Optional limit on execution steps to prevent infinite loops.
     pub max_steps: Option<usize>,
+    /// Optional hook executed before every node.
+    pub pre_node_hook: Option<TypedFlowHookFn<T>>,
+    /// Optional hook executed after every node.
+    pub post_node_hook: Option<TypedFlowHookFn<T>>,
 }
 
 impl<T> TypedFlow<T> {
@@ -72,12 +86,38 @@ impl<T> TypedFlow<T> {
             transitions: HashMap::new(),
             start_node: None,
             max_steps: None,
+            pre_node_hook: None,
+            post_node_hook: None,
         }
     }
 
     /// Set a maximum number of steps to prevent infinite loops
     pub fn with_max_steps(mut self, limit: usize) -> Self {
         self.max_steps = Some(limit);
+        self
+    }
+
+    /// Set a hook that will be called before every node execution.
+    pub fn with_pre_node_hook<F, Fut>(mut self, hook: F) -> Self
+    where
+        F: Fn(&str, TypedStore<T>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = TypedStore<T>> + Send + 'static,
+    {
+        self.pre_node_hook = Some(std::sync::Arc::new(move |name, store| {
+            Box::pin(hook(name, store))
+        }));
+        self
+    }
+
+    /// Set a hook that will be called after every node execution.
+    pub fn with_post_node_hook<F, Fut>(mut self, hook: F) -> Self
+    where
+        F: Fn(&str, TypedStore<T>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = TypedStore<T>> + Send + 'static,
+    {
+        self.post_node_hook = Some(std::sync::Arc::new(move |name, store| {
+            Box::pin(hook(name, store))
+        }));
         self
     }
 
@@ -127,7 +167,15 @@ impl<T> TypedFlow<T> {
             steps += 1;
             debug!(step = steps, node = %current_node_name, "TypedFlow::run executing node");
 
+            if let Some(hook) = &self.pre_node_hook {
+                store = hook(&current_node_name, store).await;
+            }
+
             store = node.call(store).await;
+
+            if let Some(hook) = &self.post_node_hook {
+                store = hook(&current_node_name, store).await;
+            }
 
             let next_node = {
                 let guard = store.inner.read().await;
@@ -175,7 +223,15 @@ impl<T> TypedFlow<T> {
             steps += 1;
             debug!(step = steps, node = %current_node_name, "TypedFlow::run_safe executing node");
 
+            if let Some(hook) = &self.pre_node_hook {
+                store = hook(&current_node_name, store).await;
+            }
+
             store = node.call(store).await;
+
+            if let Some(hook) = &self.post_node_hook {
+                store = hook(&current_node_name, store).await;
+            }
 
             let next_node = {
                 let guard = store.inner.read().await;
@@ -209,6 +265,8 @@ impl<T> Clone for TypedFlow<T> {
             transitions: self.transitions.clone(),
             start_node: self.start_node.clone(),
             max_steps: self.max_steps,
+            pre_node_hook: self.pre_node_hook.clone(),
+            post_node_hook: self.post_node_hook.clone(),
         }
     }
 }

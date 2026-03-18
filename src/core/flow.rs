@@ -1,5 +1,5 @@
 use crate::core::error::AgentFlowError;
-use crate::core::node::{Node, SharedStore, SimpleNode};
+use crate::core::node::{Node, ResultNode, SharedStore, SimpleNode};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -53,13 +53,37 @@ use tracing::{debug, info, instrument, warn};
 ///     let result = flow.run(store).await;
 /// }
 /// ```
+/// Asynchronous hook function type.
+pub type FlowHookFn = std::sync::Arc<
+    dyn Fn(
+            &str,
+            SharedStore,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = SharedStore> + Send + 'static>>
+        + Send
+        + Sync,
+>;
+
+/// A node inside a [`Flow`], which can be either infallible or fallible.
+#[derive(Clone)]
+pub enum FlowNode {
+    /// An infallible node returning `SharedStore`.
+    Simple(SimpleNode),
+    /// A fallible node returning `Result<SharedStore, AgentFlowError>`.
+    Result(ResultNode),
+}
+
+/// A directional graph orchestrator of modular [`Node`]s.
 pub struct Flow {
-    nodes: HashMap<String, SimpleNode>,
+    nodes: HashMap<String, FlowNode>,
     edges: HashMap<String, HashMap<String, String>>,
     start_node: Option<String>,
     /// Maximum number of node executions before the flow is forcibly stopped.
     /// `None` means unlimited (use with care in graphs that may cycle).
     pub max_steps: Option<usize>,
+    /// Optional hook executed before every node.
+    pub pre_node_hook: Option<FlowHookFn>,
+    /// Optional hook executed after every node.
+    pub post_node_hook: Option<FlowHookFn>,
 }
 
 impl Flow {
@@ -70,6 +94,8 @@ impl Flow {
             edges: HashMap::new(),
             start_node: None,
             max_steps: None,
+            pre_node_hook: None,
+            post_node_hook: None,
         }
     }
 
@@ -80,6 +106,30 @@ impl Flow {
     /// `Err(AgentFlowError::ExecutionLimitExceeded)` instead.
     pub fn with_max_steps(mut self, limit: usize) -> Self {
         self.max_steps = Some(limit);
+        self
+    }
+
+    /// Set a hook that will be called before every node execution.
+    pub fn with_pre_node_hook<F, Fut>(mut self, hook: F) -> Self
+    where
+        F: Fn(&str, SharedStore) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = SharedStore> + Send + 'static,
+    {
+        self.pre_node_hook = Some(std::sync::Arc::new(move |name, store| {
+            Box::pin(hook(name, store))
+        }));
+        self
+    }
+
+    /// Set a hook that will be called after every node execution.
+    pub fn with_post_node_hook<F, Fut>(mut self, hook: F) -> Self
+    where
+        F: Fn(&str, SharedStore) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = SharedStore> + Send + 'static,
+    {
+        self.post_node_hook = Some(std::sync::Arc::new(move |name, store| {
+            Box::pin(hook(name, store))
+        }));
         self
     }
 
@@ -101,7 +151,7 @@ impl Flow {
     /// - It does **not** add any edges — the node is registered but entirely
     ///   isolated until you call [`add_edge`](Self::add_edge).
     /// - It does **not** accept a [`ResultNode`](crate::core::node::ResultNode);
-    ///   use [`add_node`](Self::add_node) for that variant.
+    ///   use [`add_result_node`](Self::add_result_node) for that variant.
     ///
     /// Prefer `with_start` for simple linear flows where the first node is
     /// known at construction time. For more complex graphs, use
@@ -119,7 +169,16 @@ impl Flow {
         if self.start_node.is_none() {
             self.start_node = Some(name.to_string());
         }
-        self.nodes.insert(name.to_string(), node);
+        self.nodes.insert(name.to_string(), FlowNode::Simple(node));
+        self.edges.entry(name.to_string()).or_default();
+    }
+
+    /// Register a fallible node. The **first** node added becomes the start node.
+    pub fn add_result_node(&mut self, name: &str, node: crate::core::node::ResultNode) {
+        if self.start_node.is_none() {
+            self.start_node = Some(name.to_string());
+        }
+        self.nodes.insert(name.to_string(), FlowNode::Result(node));
         self.edges.entry(name.to_string()).or_default();
     }
 
@@ -198,11 +257,37 @@ impl Flow {
             }
             steps += 1;
             debug!(step = steps, node = %current_node_name, "Flow executing node");
+
+            if let Some(hook) = &self.pre_node_hook {
+                store = hook(&current_node_name, store).await;
+            }
+
             // Drop span before await so the future remains Send
             drop(
                 tracing::info_span!("flow.node", node = %current_node_name, step = steps).entered(),
             );
-            store = node.call(store).await;
+            println!("Executing node: {}", current_node_name);
+            store = match node {
+                FlowNode::Simple(n) => n.call(store).await,
+                FlowNode::Result(n) => match n.call(store.clone()).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        if safe {
+                            return Err(e);
+                        } else {
+                            store.write().await.insert(
+                                "error".to_string(),
+                                serde_json::Value::String(e.to_string()),
+                            );
+                            break;
+                        }
+                    }
+                }
+            };
+
+            if let Some(hook) = &self.post_node_hook {
+                store = hook(&current_node_name, store).await;
+            }
 
             // Consume the "action" key to route, preventing it from leaking to the next node
             let action = store
@@ -215,6 +300,8 @@ impl Flow {
                 })
                 .unwrap_or_else(|| "default".to_string());
 
+            println!("Action: {}", action);
+
             debug!(step = steps, node = %current_node_name, action = %action, "Flow transition");
 
             if let Some(next_node) = self
@@ -222,8 +309,10 @@ impl Flow {
                 .get(&current_node_name)
                 .and_then(|edges| edges.get(&action))
             {
+                println!("Next node: {}", next_node);
                 current_node_name = next_node.clone();
             } else {
+                println!("No next node, breaking");
                 break;
             }
         }
@@ -263,7 +352,7 @@ impl Flow {
     }
 
     /// Look up a node by name. Returns `None` if not registered.
-    pub fn get_node(&self, name: &str) -> Option<&SimpleNode> {
+    pub fn get_node(&self, name: &str) -> Option<&FlowNode> {
         self.nodes.get(name)
     }
 
@@ -294,6 +383,8 @@ impl Clone for Flow {
             edges: self.edges.clone(),
             start_node: self.start_node.clone(),
             max_steps: self.max_steps,
+            pre_node_hook: self.pre_node_hook.clone(),
+            post_node_hook: self.post_node_hook.clone(),
         }
     }
 }

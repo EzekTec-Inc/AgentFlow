@@ -4,6 +4,8 @@
 pub mod agent;
 /// Batch execution pattern.
 pub mod batchflow;
+/// Human-in-the-loop pattern.
+pub mod hitl;
 /// Map-reduce pattern.
 pub mod mapreduce;
 /// Multi-agent concurrent pattern.
@@ -23,6 +25,7 @@ pub mod workflow;
 // Re-export all patterns for convenience
 pub use agent::Agent;
 pub use batchflow::BatchFlow;
+pub use hitl::create_hitl_node;
 pub use mapreduce::MapReduce;
 pub use multi_agent::MultiAgent;
 pub use rag::Rag;

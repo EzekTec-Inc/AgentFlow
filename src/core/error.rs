@@ -19,6 +19,10 @@ pub enum AgentFlowError {
     #[error("Not found: {0}")]
     NotFound(String),
 
+    /// A node signaled that the workflow is suspended waiting for external input.
+    #[error("Execution suspended: {0}")]
+    Suspended(String),
+
     /// An operation timed out. Treated as **transient** by [`Agent::decide_result`]
     /// — it will be retried up to `max_retries` times.
     ///

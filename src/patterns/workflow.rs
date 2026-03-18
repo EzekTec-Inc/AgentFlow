@@ -150,7 +150,7 @@ impl Workflow {
     }
 
     /// Look up a step node by name.
-    pub fn get_node(&self, name: &str) -> Option<&SimpleNode> {
+    pub fn get_node(&self, name: &str) -> Option<&crate::core::flow::FlowNode> {
         self.flow.get_node(name)
     }
 
