@@ -51,6 +51,7 @@ use tracing::{debug, info, instrument};
 /// ```
 ///
 /// [`ParallelBatch`]: crate::core::batch::ParallelBatch
+/// [`Batch`]: crate::core::batch::Batch
 #[derive(Clone)]
 pub struct MapReduce<M, R> {
     /// The mapper applied to the input batch (e.g., `Batch` or `ParallelBatch`).

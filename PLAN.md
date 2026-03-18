@@ -930,3 +930,36 @@ Replaced one-line comment with full section that:
 * **Previous behavior:** Outdated MCP dependencies listed, missing architectural additions, old example docs.
 * **New behavior:** All docs accurately reflect `rmcp` optionality, strictly typed error outputs, and the updated node structure.
 * **Rollback instructions:** Revert `.md` modifications and delete `report.md`.
+
+### Step 9.5: Local Axum Server for MCP Tools Integration
+* **Timestamp (UTC):** 2026-03-18T18:30:00Z
+* **Summary of change:** Created an axum web server endpoint locally to interact with AgentFlow using the context7 and openviking tools.
+* **Files modified:**
+  - `tools/local-axum-server.rs`
+  - `Cargo.toml`
+* **Exact reason:** Provide local endpoint mapping for MCP tools testing and usage.
+* **Previous behavior:** No local HTTP server existed for local-agent triggering of configured MCP servers.
+* **New behavior:** Server listens on port 3000, handles POST requests containing prompts, and spawns the correct MCP processes.
+* **Rollback instructions:** Delete `tools/local-axum-server.rs` and remove the `[[bin]]` from `Cargo.toml`.
+
+## [2026-03-18T19:01:23Z] Fix crate publish blocking issues (Clippy/Rustdoc)
+- **Timestamp (UTC):** 2026-03-18T19:01:23Z
+- **Summary of change:** Removed `tracing_subscriber` import from `tools/local-axum-server.rs` and fixed a broken intra-doc link in `src/patterns/mapreduce.rs`.
+- **Files modified:**
+  - `tools/local-axum-server.rs`
+  - `src/patterns/mapreduce.rs`
+- **Exact reason:** `cargo clippy` failed because `tracing_subscriber` is only a dev-dependency, and `cargo doc` threw warnings due to a broken `[`Batch`]` doc link. These break the publishing workflow pipeline.
+- **Previous behavior:** `local-axum-server.rs` attempted to initialize `tracing_subscriber::fmt`, and `mapreduce.rs` referenced an unlinked `Batch` term.
+- **New behavior:** `local-axum-server.rs` uses `println!` instead, and `mapreduce.rs` fully qualifies `[`Batch`]` to `crate::core::batch::Batch`.
+- **Rollback instructions:** Revert `tools/local-axum-server.rs` tracing statements and undo the doc link fix in `src/patterns/mapreduce.rs`.
+
+## [2026-03-18T19:33:15Z] Add .cade-db.key to .gitignore
+- **Timestamp (UTC):** 2026-03-18T19:33:15Z
+- **Summary of change:** Appended `.cade-db.key` to `.gitignore`.
+- **Files modified:**
+  - `.gitignore`
+- **Exact reason:** Prevent accidental commit of local agent-specific sensitive database keys before publishing or pushing to Git.
+- **Previous behavior:** `.cade-db.key` was untracked and would be staged if `git add .` was run.
+- **New behavior:** `.cade-db.key` is ignored by Git.
+- **Rollback instructions:** Remove `.cade-db.key` from `.gitignore`.
+

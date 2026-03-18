@@ -7,21 +7,24 @@ use tokio::sync::RwLock;
 #[tokio::test]
 async fn test_agent_retry_on_error_key() {
     let node = create_node(|store| async move {
-        let attempts = {
-            let guard = store.read().await;
-            guard.get("attempts").and_then(|v| v.as_i64()).unwrap_or(0)
-        } + 1;
+        {
+            let attempts = {
+                let guard = store.read().await;
+                guard.get("attempts").and_then(|v| v.as_i64()).unwrap_or(0)
+            } + 1;
 
-        let mut guard = store.write().await;
-        guard.insert("attempts".into(), serde_json::json!(attempts));
+            let mut guard = store.write().await;
+            guard.insert("attempts".into(), serde_json::json!(attempts));
 
-        if attempts < 3 {
-            guard.insert("error".into(), serde_json::json!("Need more attempts"));
-        } else {
-            guard.remove("error");
-            guard.insert("success".into(), serde_json::json!(true));
-        }
-        drop(guard);
+            if attempts < 3 {
+                guard.insert("error".into(), serde_json::json!("Need more attempts"));
+            } else {
+                guard.remove("error");
+                guard.insert("success".into(), serde_json::json!(true));
+            }
+        } //NOTE: Stephen Ezekwem - March 18, 11:53 AM, 2026: Putting the sharedstore (Arc) into
+          //curly braces is a drop guard as well.
+          // drop(guard);
         store
     });
 
