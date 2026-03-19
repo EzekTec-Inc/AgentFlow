@@ -988,3 +988,17 @@ Replaced one-line comment with full section that:
 - **Previous behavior:** `local-axum-server` executed commands without authentication. Blocked shells list was missing common variants.
 - **New behavior:** `local-axum-server` requires `AGENTFLOW_AUTH_TOKEN` or generates a one-time token printed to stdout. Blocked shells list includes zsh, fish, ash, etc.
 - **Rollback instructions:** Revert this commit using `git revert HEAD`.
+
+## [2026-03-18T22:00:00Z] Add Advanced AgentFlow Examples
+- **Timestamp (UTC):** 2026-03-18T22:00:00Z
+- **Summary of change:** Added `security_auditor.rs`, `continuous_rag.rs`, and `self_correcting_coder.rs` examples to demonstrate advanced `AgentFlow` patterns. Updated `Cargo.toml` to register these examples.
+- **Files modified:**
+  - `Cargo.toml`
+  - `examples/security_auditor.rs` (new)
+  - `examples/continuous_rag.rs` (new)
+  - `examples/self_correcting_coder.rs` (new)
+  - `IMPLEMENTATION_PLAN.md` (new)
+- **Exact reason:** Provide users with high-impact, real-world examples of how to use `AgentFlow` for tasks like security auditing, RAG, and self-correcting code generation.
+- **Previous behavior:** These advanced examples did not exist, limiting the demonstration of the framework's capabilities.
+- **New behavior:** Users can run these examples using `cargo run --example <name>` to see advanced patterns in action.
+- **Rollback instructions:** Revert this commit using `git revert HEAD`.
