@@ -147,6 +147,19 @@ required-features = ["mcp", "skills"]
 name = "hitl"
 path = "examples/hitl.rs"
 
+[[example]]
+name = "security_auditor"
+path = "examples/security_auditor.rs"
+
+[[example]]
+name = "continuous_rag"
+path = "examples/continuous_rag.rs"
+required-features = ["rag"]
+
+[[example]]
+name = "self_correcting_coder"
+path = "examples/self_correcting_coder.rs"
+
 [[bin]]
 name = "local-axum-server"
 path = "tools/local-axum-server.rs"
