@@ -6,6 +6,7 @@ use agentflow::patterns::skill::SkillInjector;
 use agentflow::skills::{Skill, SkillTool};
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
+use rig::completion::Prompt;
 use rig::client::ProviderClient;
 use rig::providers::openai::Client;
 use serde_json::Value;

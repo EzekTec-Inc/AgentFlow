@@ -1,8 +1,11 @@
 /target
 .env
 .abacusai/
+.abacusai
 report.md
 report.pdf
+.cade
+PLAN.md
 
 .cade-db.key
 

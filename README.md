@@ -245,6 +245,9 @@ cargo build --example mcp-server --features "mcp skills"
 | `document-processing` | Document pipeline with skill nodes (`--features skills`) |
 | `mcp-server` | MCP stdio server exposing skill-backed tools (`--features "mcp skills"`) |
 | `mcp-client` | TypedFlow client that spawns and calls the `mcp-server` example (`--features mcp`) |
+| `security_auditor` | Multi-agent automated security auditing with HITL pattern |
+| `continuous_rag` | Parallel batch document ingestion + dynamic RAG queries (`--features rag`) |
+| `self_correcting_coder` | Generates Rust code, compiles it, and self-corrects using compiler errors |
 
 ### Environment setup
 

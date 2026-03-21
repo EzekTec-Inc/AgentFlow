@@ -2,10 +2,11 @@ use agentflow::core::flow::Flow;
 use agentflow::core::node::{create_node, SharedStore};
 use agentflow::core::parallel::ParallelFlow;
 use agentflow::utils::tool::create_tool_node;
-use rig::providers::openai::Client;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::client::ProviderClient;
+use rig::completion::Prompt;
+use rig::providers::openai::Client;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -94,8 +95,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
     );
 
-    let parallel = ParallelFlow::new(vec![branch_clippy, branch_secrets]).with_merge(
-        |_initial, results| {
+    let parallel =
+        ParallelFlow::new(vec![branch_clippy, branch_secrets]).with_merge(|_initial, results| {
             let merged = Arc::new(RwLock::new(HashMap::new()));
             Box::pin(async move {
                 let mut guard = merged.write().await;
@@ -107,8 +108,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 drop(guard);
                 merged
             })
-        },
-    );
+        });
 
     // 3. Synthesis Flow
     let mut synthesis = Flow::new();
