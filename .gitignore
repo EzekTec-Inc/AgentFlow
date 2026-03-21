@@ -1,3 +1,4 @@
+PLAN.md
 /target
 target
 .env
@@ -5,8 +6,7 @@ target
 .abacusai
 report.md
 report.pdf
-.cade
-PLAN.md
+.cade/
 .gitignore
 .cade-db.key
 
