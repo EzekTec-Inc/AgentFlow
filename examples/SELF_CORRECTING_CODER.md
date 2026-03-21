@@ -1,21 +1,63 @@
-# Example: self_correcting_coder
+# Self-Correcting Coder
 
-*This documentation is derived from the source code.*
+## What this example is for
 
-# Example: self_correcting_coder.rs
+This example demonstrates the `Self-Correcting Coder` pattern in AgentFlow.
 
-**Purpose:**
-Demonstrates a resilient, self-healing agent loop that writes code, compiles it, and uses compiler errors to automatically correct mistakes via built-in retry logic.
+**Primary AgentFlow pattern:** `Self-correction loop`  
+**Why you would use it:** generate, validate, and repair code iteratively.
 
-**How it works:**
-- **Generator Node:** An agent writes a Rust function based on a prompt. It reads any previous compilation errors from the store to adjust its code.
-- **Evaluator Node:** The generated code is written to the system's temporary directory and compiled using `rustc` via a system command. If compilation fails, the stderr is saved back to the store under the `"error"` key.
-- **Automatic Retries:** The entire sub-flow is wrapped in an `Agent::with_retry`. The framework automatically detects the presence of the `"error"` key in the output and re-triggers the flow, passing the error back to the Generator node up to the `max_retries` limit.
+## How the example works
 
-**How to adapt:**
-- Use this pattern for code generation, automated data formatting, SQL query generation, or any scenario where output can be programmatically validated (e.g., via a compiler, linter, or schema validator) and fed back to the LLM for self-correction.
+1. println!("Starting Self-Correcting Coder Workflow...");
+2. Sub-flow that generates code and compiles it
+3. Node 1: Generator
+4. create_node(|store: SharedStore| {
+5. .unwrap_or("")
+6. .agent("gpt-4o-mini")
 
-**Example execution:**
+## Execution diagram
+
+```mermaid
+flowchart TD
+    A[Task or failing code] --> B[Coder generates patch]
+    B --> C[Test / validation step]
+    C --> D{Passes?}
+    D -->|no| E[Critique and retry]
+    E --> B
+    D -->|yes| F[Accept patch]
+```
+
+## Key implementation details
+
+- The example source is `examples/self_correcting_coder.rs`.
+- It uses AgentFlow primitives to move data through a store, flow, or higher-level pattern wrapper.
+- The implementation is meant to be adapted by swapping in your own prompts, tool handlers, retrieval logic, or business rules.
+- When an LLM provider is used, the example relies on `rig` and environment-provided credentials.
+
+## Build your own with this pattern
+
+Use the same pattern in your own project like this:
+
+```rust
+let coder = Workflow::new()
+    .then(generate_patch_node)
+    .then(test_node)
+    .then(repair_node);
+```
+
+### Customization ideas
+
+- Use this when you need to generate, validate, and repair code iteratively.
+- Replace the demo prompts, tools, or handlers with your application logic.
+- Persist or forward the final result at your system boundary.
+
+## How to run
+
 ```bash
 cargo run --example self_correcting_coder
 ```
+
+## Requirements and notes
+
+Usually requires provider credentials and local validation tooling if tests/commands are executed.

@@ -1,23 +1,61 @@
-# Example: security_auditor
+# Security Auditor
 
-*This documentation is derived from the source code.*
+## What this example is for
 
-# Example: security_auditor.rs
+This example demonstrates the `Security Auditor` pattern in AgentFlow.
 
-**Purpose:**
-Demonstrates an advanced multi-agent workflow for automated security auditing using `ParallelFlow`, Shell Tools, and Human-in-the-Loop (HITL) patterns.
+**Primary AgentFlow pattern:** `Security analysis workflow`  
+**Why you would use it:** specialize an agent for audit-style output.
 
-**How it works:**
-- **Crawler:** A `Flow` executes a shell command (`cargo clippy`) via `create_tool_node` to gather static analysis data.
-- **Parallel Analysis:** Uses `ParallelFlow` to fan-out the analysis to multiple agents simultaneously. One agent analyzes the clippy output for logic bugs, while another mocks a scan for hardcoded secrets.
-- **Merge Strategy:** A custom merge function aggregates the parallel analysis results into a single shared store.
-- **Synthesis:** An agent compiles the aggregated findings into a cohesive markdown security report.
-- **HITL Review:** A final node pauses the workflow, prints the draft report to the console, and uses `inquire` to ask the user to explicitly "Approve" or "Reject" the report before proceeding.
+## How the example works
 
-**How to adapt:**
-- Use this pattern for automated PR reviews, vulnerability scanning pipelines, or any scenario requiring parallel data processing followed by human oversight.
+1. println!("Starting Security Auditor Workflow...");
+2. Crawler Flow: runs cargo clippy
+3. "run_clippy",
+4. create_tool_node(
+5. Parallel Analysis Fan-out
+6. "analyze_clippy",
 
-**Example execution:**
+## Execution diagram
+
+```mermaid
+flowchart TD
+    A[Source/code artifact] --> B[Analyzer agent]
+    B --> C[Security finding extraction]
+    C --> D[Severity / recommendation formatting]
+    D --> E[Audit report]
+```
+
+## Key implementation details
+
+- The example source is `examples/security_auditor.rs`.
+- It uses AgentFlow primitives to move data through a store, flow, or higher-level pattern wrapper.
+- The implementation is meant to be adapted by swapping in your own prompts, tool handlers, retrieval logic, or business rules.
+- When an LLM provider is used, the example relies on `rig` and environment-provided credentials.
+
+## Build your own with this pattern
+
+Use the same pattern in your own project like this:
+
+```rust
+let audit_flow = Workflow::new()
+    .then(findings_node)
+    .then(severity_node)
+    .then(report_node);
+```
+
+### Customization ideas
+
+- Use this when you need to specialize an agent for audit-style output.
+- Replace the demo prompts, tools, or handlers with your application logic.
+- Persist or forward the final result at your system boundary.
+
+## How to run
+
 ```bash
 cargo run --example security_auditor
 ```
+
+## Requirements and notes
+
+Usually requires provider credentials for the analyzer agent.
