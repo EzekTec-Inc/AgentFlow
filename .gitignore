@@ -7,6 +7,6 @@ report.md
 report.pdf
 .cade
 PLAN.md
-
+.gitignore
 .cade-db.key
 
