@@ -1,73 +1,78 @@
-# Single Agent with Retry
+# Agent Tutorial
 
 ## What this example is for
 
-Demonstrates how to create a single LLM-powered agent using AgentFlow and the rig crate, including retry logic and both ergonomic and low-level usage.
+This example demonstrates how to create a single LLM-powered `Agent` using AgentFlow. It shows how to integrate the `rig` library for OpenAI inference, apply built-in retry logic, and interact with the agent using both high-level and low-level execution methods.
 
-**Primary AgentFlow pattern:** `Agent`  
-**Why you would use it:** wrap a node with retry-aware single-step execution.
+**Primary AgentFlow pattern:** `Basic Agent`  
+**Why you would use it:** As the atomic building block of AgentFlow. Every node in a complex flow or orchestrator is essentially an Agent. Use this pattern when you need robust, single-turn LLM generation with automatic retries for flaky network connections or API rate limits.
 
-## How the example works
+## How it works
 
-1. Defines a node that takes a prompt from the store and calls an LLM (via rig) to generate a response.
-2. Wraps the node in an `Agent` with retry logic.
-3. Shows both the high-level `decide` method (HashMap in/out) and the lower-level `call` method (SharedStore in/out).
+At its core, an `Agent` is just a wrapper around a `Node`. The node defines the business logic (reading a prompt, hitting OpenAI via `rig`, saving the response).
 
-## Execution diagram
+The `Agent` struct wraps that node and provides:
+1. `decide`: A high-level, ergonomic method that accepts a standard `HashMap` instead of an `Arc<RwLock<HashMap>>`, hiding the async synchronization primitives.
+2. `call`: The low-level standard `Node` method that accepts the raw `SharedStore` state.
+3. `Agent::with_retry`: Built-in backoff for network resilience.
 
-```mermaid
-flowchart TD
-    A[Input prompt in store] --> B[Agent node reads prompt]
-    B --> C[LLM call via rig]
-    C --> D[Write response to store]
-    D --> E{Succeeded?}
-    E -->|yes| F[Return result]
-    E -->|no| G[Retry policy waits]
-    G --> B
-```
+### Step-by-Step Code Walkthrough
 
-## Key implementation details
-
-- The example source is `examples/agent.rs`.
-- It uses AgentFlow primitives to move data through a store, flow, or higher-level pattern wrapper.
-- The implementation is meant to be adapted by swapping in your own prompts, tool handlers, retrieval logic, or business rules.
-- When an LLM provider is used, the example relies on `rig` and environment-provided credentials.
-
-## Build your own with this pattern
-
-Use the same pattern in your own project like this:
+First, we define a standard asynchronous node. The node extracts the `prompt` string from the store and uses `rig::providers::openai` to ask GPT for a poem about AI in Shakespearean style.
 
 ```rust
-use agentflow::prelude::*;
-use serde_json::Value;
-use std::collections::HashMap;
+let agent_node = create_node(move |store: SharedStore| {
+    Box::pin(async move {
+        // 1. Read the input prompt
+        let prompt = {
+            let guard = store.write().await;
+            guard.get("prompt").unwrap().to_string()
+        };
 
-let support_agent = Agent::with_retry(
-    create_node(|store| Box::pin(async move {
-        store.write().await.insert("response".into(), Value::String("Ticket triaged".into()));
+        // 2. Build the LLM call using `rig`
+        let openai_client = providers::openai::Client::from_env();
+        let rig_agent = openai_client
+            .agent("gpt-4o-mini")
+            .preamble(r#"You are a helpful assistant who is very skilled at writing poetry."#)
+            .build();
+
+        // 3. Prompt the model
+        let response = rig_agent.prompt(&prompt).await.unwrap();
+
+        // 4. Save the response
+        store.write().await.insert("response".to_string(), Value::String(response));
         store
-    })),
-    3,
-    500,
-);
-
-let mut input = HashMap::new();
-input.insert("ticket".into(), Value::String("Reset password".into()));
-let result = support_agent.decide(input).await?;
+    })
+});
 ```
 
-### Customization ideas
+Next, instead of adding this node to a `Flow`, we wrap it in an `Agent` struct. This gives us `with_retry`, meaning if the OpenAI API fails, AgentFlow will automatically wait and try again up to 3 times, with a 1500ms delay.
 
-- Change the prompt or LLM model to suit your use case.
-- Use `Agent::with_retry` to add robustness to any LLM or tool call.
-- Use `decide` for ergonomic, single-step agent calls in your own projects.
+```rust
+let agent = Agent::with_retry(agent_node, 3, 1500);
+```
+
+Finally, we execute the agent. For simple use cases, you can use `.decide()` which takes a plain `HashMap` and abstracts away the `SharedStore` lock handling.
+
+```rust
+let result = agent.decide(store.clone()).await;
+
+if let Some(response) = result.get("response").and_then(|v| v.as_str()) {
+    println!("[llm response]: \n{}\n", response);
+}
+```
+
+If you need the raw `SharedStore` (for instance, to pass into a `Flow`), you can use the lower-level `.call()` method:
+
+```rust
+let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(store));
+let result_store = agent.call(shared_store).await;
+```
 
 ## How to run
+
+Ensure you have your `OPENAI_API_KEY` set in your environment or `.env` file, then run:
 
 ```bash
 cargo run --example agent
 ```
-
-## Requirements and notes
-
-Typically requires `OPENAI_API_KEY` (or the provider credentials used by `rig`).

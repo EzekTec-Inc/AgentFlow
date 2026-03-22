@@ -1,59 +1,70 @@
-# Concurrent Agents
+# Async Agent Tutorial
 
 ## What this example is for
 
-Showcases running multiple agents concurrently (async/parallel) using AgentFlow and rig.
+This example demonstrates how to run multiple `Agent` instances concurrently (in parallel) using AgentFlow and `tokio`. 
 
-**Primary AgentFlow pattern:** `Agent + Tokio concurrency`  
-**Why you would use it:** run multiple agents in parallel and join their results.
+**Primary AgentFlow pattern:** `Parallel Execution`  
+**Why you would use it:** When you need to fan-out LLM requests, such as calling multiple specialized agents at the same time, processing a batch of prompts, or requesting multiple perspectives on a single issue without blocking on each network request.
 
-## How the example works
+## How it works
 
-1. Defines two LLM nodes with different prompts.
-2. Wraps each in an `Agent`.
-3. Runs both agents concurrently using `tokio::join!`.
-4. Prints both prompts and both responses.
+The example creates two separate input stores with two different prompts (one asking for a haiku, the other asking for a summary). It then defines an asynchronous LLM node factory that generates rig-powered nodes.
 
-## Execution diagram
+Each node is wrapped in an `Agent` wrapper with retry logic. Finally, we use `tokio::join!` to execute both agents simultaneously.
 
-```mermaid
-flowchart LR
-    A[Input 1] --> B[Agent 1]
-    C[Input 2] --> D[Agent 2]
-    B --> E[Response 1]
-    D --> F[Response 2]
-    E --> G[Join results]
-    F --> G
-```
+### Step-by-Step Code Walkthrough
 
-## Key implementation details
-
-- The example source is `examples/async_agent.rs`.
-- It uses AgentFlow primitives to move data through a store, flow, or higher-level pattern wrapper.
-- The implementation is meant to be adapted by swapping in your own prompts, tool handlers, retrieval logic, or business rules.
-- When an LLM provider is used, the example relies on `rig` and environment-provided credentials.
-
-## Build your own with this pattern
-
-Use the same pattern in your own project like this:
+First, we define a reusable node factory. This is a closure that takes a description and returns a boxed async `Node`. Inside the node, we extract the prompt from the shared store and call the OpenAI API using the `rig` crate.
 
 ```rust
-let research = research_agent.decide(research_input);
-let summary = summary_agent.decide(summary_input);
-let (research_result, summary_result) = tokio::join!(research, summary);
+let llm_node = |desc: &'static str| {
+    create_node(move |store: SharedStore| {
+        Box::pin(async move {
+            // Read the prompt
+            let prompt = {
+                let guard = store.read().await;
+                guard.get("prompt").unwrap().to_string()
+            };
+
+            // Call the LLM
+            let openai_client = providers::openai::Client::from_env();
+            let rig_agent = openai_client
+                .agent("gpt-4o-mini")
+                .preamble(&format!("You are a helpful assistant for {}.", desc))
+                .build();
+
+            let response = rig_agent.prompt(&prompt).await.unwrap();
+
+            // Write the response back to the store
+            store.write().await.insert("response".to_string(), Value::String(response));
+            store
+        })
+    })
+};
 ```
 
-### Customization ideas
+Next, we wrap the nodes in `Agent::with_retry`. The `Agent` struct provides a high-level wrapper over a raw node, adding built-in retry mechanisms (helpful for flaky network calls).
 
-- Use this pattern to parallelize LLM calls (e.g., for batch processing, multi-agent chat, or tool use).
-- Add more agents or change the prompts/models as needed.
+```rust
+let agent1 = Agent::with_retry(llm_node("poetry"), 2, 500);
+let agent2 = Agent::with_retry(llm_node("summarization"), 2, 500);
+```
+
+Finally, instead of awaiting them one by one, we use `decide` (which takes a standard `HashMap` instead of a thread-safe `SharedStore` for convenience) to get the futures, and execute them concurrently with `tokio::join!`.
+
+```rust
+let fut1 = agent1.decide(store1);
+let fut2 = agent2.decide(store2);
+
+// Run both agents in parallel
+let (result1, result2) = tokio::join!(fut1, fut2);
+```
 
 ## How to run
+
+Ensure you have your `OPENAI_API_KEY` set in your environment or `.env` file, then run:
 
 ```bash
 cargo run --example async_agent
 ```
-
-## Requirements and notes
-
-Typically requires `OPENAI_API_KEY` because both concurrent agents call the LLM.

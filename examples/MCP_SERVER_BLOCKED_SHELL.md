@@ -1,55 +1,60 @@
-# MCP Server with Blocked Shell Tool
+# MCP Server Blocked Shell Tutorial
 
 ## What this example is for
 
-This example demonstrates the `MCP Server with Blocked Shell Tool` pattern in AgentFlow.
+This example demonstrates how AgentFlow handles security and restrictive permissions inside a Model Context Protocol (MCP) server. Specifically, it shows what happens when an LLM tries to execute a shell command tool that has been explicitly denied or blocked by the server configuration.
 
-**Primary AgentFlow pattern:** `MCP policy enforcement`  
-**Why you would use it:** block sensitive tools while exposing safe capabilities.
+**Primary AgentFlow pattern:** `Secure MCP Server configuration`  
+**Why you would use it:** To ensure the LLM agents executing arbitrary tools over an MCP connection are sandboxed and cannot execute arbitrary shell commands or access restricted files on the host machine.
 
-## How the example works
+## How it works
 
-1. Builds an MCP server with an explicit allow/deny policy for tool exposure.
-2. Receives a tool request from an MCP client.
-3. Rejects calls to blocked tools such as shell execution.
-4. Allows safe tools to run and returns their output normally.
+The code defines an `McpServer` named `Secure_Server` and registers a `Skill` containing a single tool.
+1. The tool is defined as `execute_shell`, but the command it attempts to run is a generic `sh` script.
+2. AgentFlow's security model detects that the `sh` command is risky. It is hardcoded to prevent certain commands from executing unless explicitly allowed.
+3. The server blocks the execution and returns an error payload over stdio.
 
-## Execution diagram
+### Step-by-Step Code Walkthrough
 
-```mermaid
-flowchart TD
-    A[MCP client requests shell tool] --> B[MCP server policy check]
-    B --> C{Tool allowed?}
-    C -->|no| D[Reject blocked shell execution]
-    C -->|yes| E[Execute safe tool]
-    D --> F[Return denial/error]
-    E --> G[Return tool output]
-```
-
-## Key implementation details
-
-- The example source is `examples/mcp_server_blocked_shell.rs`.
-- It shows how AgentFlow can interoperate with the Model Context Protocol boundary instead of only local tools.
-- In production, you would add authentication, stronger input validation, and explicit policy checks around exposed capabilities.
-
-## Build your own with this pattern
+First, we define a Skill document (usually embedded as YAML/Markdown) with a tool that runs a shell interpreter.
 
 ```rust
-let output = flow.run(store).await?;
+let skill_content = r#"---
+name: VulnerableTools
+description: Tools for executing arbitrary shell commands.
+version: 1.0.0
+tools:
+  - name: execute_shell
+    description: Executes a shell command.
+    command: sh
+    args: ["-c", "{{command}}"]
+---
+"#;
+
+// Parse the raw text into a Skill struct
+let skill = Skill::parse(skill_content)?;
 ```
 
-### Customization ideas
+Next, we start the server. By default, AgentFlow's MCP implementation is configured to block shell interpreters (`sh`, `bash`, `zsh`, `cmd`, `powershell`) to prevent prompt injection attacks where an LLM escapes a sandbox.
 
-- Replace the demo transport or tool handlers with the MCP server/client your application actually uses.
-- Add application-specific schemas so tool inputs and outputs are validated before execution.
-- Log and audit tool invocations if the MCP boundary reaches sensitive systems.
+```rust
+// Create the server, register the potentially dangerous tool, and start listening
+let server = McpServer::new("Secure_Server", "0.2.0")
+    .register_skill(skill);
+
+// When a client calls `execute_shell`, this will return a security violation error
+// rather than executing the `sh -c ...` command on the host.
+server.run().await?;
+```
+
+When a client attempts to call `execute_shell` with malicious arguments via the MCP protocol, AgentFlow returns an error indicating the tool command is not permitted for execution.
 
 ## How to run
 
+To test this server, you would typically configure an MCP client to attempt running the `execute_shell` tool.
+
 ```bash
-cargo run --features="mcp" --example mcp_server_blocked_shell
+cargo build --example mcp_server_blocked_shell
 ```
 
-## Requirements and notes
-
-Requires the `mcp` feature; demonstrates policy checks rather than permissive shell access.
+*(Note: Running it directly in the terminal will appear to hang because it is waiting for JSON-RPC payloads on stdin).*

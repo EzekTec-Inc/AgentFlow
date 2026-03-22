@@ -1,64 +1,81 @@
-# Conditional Routing
+# Conditional Routing Tutorial
 
 ## What this example is for
 
-This example demonstrates the `Conditional Routing` pattern in AgentFlow.
+This example demonstrates the **Conditional Routing** pattern in AgentFlow. It builds a real-world, LLM-powered triage system that classifies incoming customer service messages and routes them to the appropriate specialist agent.
 
 **Primary AgentFlow pattern:** `Flow routing`  
-**Why you would use it:** drive graph transitions with action keys in the store.
+**Why you would use it:** To dynamically drive graph transitions based on runtime decisions (like an LLM classifying intent) rather than static sequences.
 
-## How the example works
+## How it works
 
-1. Real-world LLM-powered intent routing. A Triage node calls an LLM to classify
-2. and routes it to the appropriate specialist agent — also LLM-backed.
-3. Run with: cargo run --example routing
-4. "You are a customer-service triage bot. Classify the message into exactly one category: \
-5. "You are a helpful customer service agent. Respond to the customer's message \
-6. ── Triage node: LLM classifies intent ───────────────────────────────────
+The system is built as a state machine (`Flow`) with four nodes:
+1. **`triage`**: The starting node. An LLM reads the user's message and classifies it as `tech_support`, `billing`, or `general`.
+2. **`tech_support`**: An LLM agent specialized in technical issues.
+3. **`billing`**: An LLM agent specialized in billing queries.
+4. **`general`**: A fallback LLM agent for general inquiries.
 
-## Execution diagram
+### Step-by-Step Code Walkthrough
 
-```mermaid
-flowchart TD
-    A[Node writes action into store] --> B[Flow reads action]
-    B --> C{Matching edge?}
-    C -->|yes| D[Traverse named edge]
-    C -->|no| E[Use default edge or stop]
-    D --> F[Next node]
-```
-
-## Key implementation details
-
-- The example source is `examples/routing.rs`.
-- It uses AgentFlow primitives to move data through a store, flow, or higher-level pattern wrapper.
-- The implementation is meant to be adapted by swapping in your own prompts, tool handlers, retrieval logic, or business rules.
-- When an LLM provider is used, the example relies on `rig` and environment-provided credentials.
-
-## Build your own with this pattern
-
-Use the same pattern in your own project like this:
+First, we create the **Triage Node**. This node's only job is to evaluate the message, determine the intent, and write that intent to the `action` key in the shared state store.
 
 ```rust
-let flow = Flow::new()
-    .node("start", start_node)
-    .node("approve", approve_node)
-    .node("reject", reject_node)
-    .edge("start", "approve", "approved")
-    .edge("start", "reject", "rejected");
+let triage = create_node(|store: SharedStore| {
+    Box::pin(async move {
+        // 1. Read the user's message from the store
+        let message = {
+            let g = store.read().await;
+            g.get("message").unwrap().to_string()
+        };
+
+        // 2. Call the LLM to classify the intent
+        let agent = client.agent("gpt-4o-mini").preamble(TRIAGE_SYSTEM).build();
+        let intent = agent.prompt(&message).await.unwrap_or("general".into());
+
+        // 3. Write the intent as the "action" key
+        store.write().await.insert("action".to_string(), Value::String(intent));
+        store
+    })
+});
 ```
 
-### Customization ideas
+Next, we create a **Specialist Node** (e.g., `tech_support`). It reads the original message, generates a specialized response, and saves it to the store.
 
-- Use this when you need to drive graph transitions with action keys in the store.
-- Replace the demo prompts, tools, or handlers with your application logic.
-- Persist or forward the final result at your system boundary.
+```rust
+let tech_node = create_node(|store: SharedStore| {
+    Box::pin(async move {
+        let msg = store.read().await.get("message").unwrap().to_string();
+        
+        let reply = llm_reply(TECH_SYSTEM, &msg).await;
+        
+        // Write the final response to the store
+        store.write().await.insert("response".to_string(), Value::String(reply));
+        store
+    })
+});
+```
+
+Finally, we construct the graph by registering the nodes and defining the **conditional edges**:
+
+```rust
+let mut flow = Flow::new();
+
+// The first node added becomes the starting node automatically
+flow.add_node("triage", triage);
+flow.add_node("tech_support", tech_node);
+flow.add_node("billing", billing_node);
+flow.add_node("general", general_node);
+
+// Routing logic: If triage outputs "action": "tech_support", go to the tech_support node.
+flow.add_edge("triage", "tech_support", "tech_support");
+flow.add_edge("triage", "billing", "billing");
+flow.add_edge("triage", "general", "general");
+```
 
 ## How to run
+
+Ensure you have your `OPENAI_API_KEY` set in your environment or `.env` file, then run:
 
 ```bash
 cargo run --example routing
 ```
-
-## Requirements and notes
-
-No special credentials are needed unless routed nodes use external services.
