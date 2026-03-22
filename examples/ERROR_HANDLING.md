@@ -56,6 +56,48 @@ match result {
 }
 ```
 
+## Execution diagram
+
+```mermaid
+graph TD
+    A([Start]) --> S1
+
+    subgraph S1["Scenario 1 · ResultNode success"]
+        N1[create_result_node\nwrites 'computed!'] --> OK1([Ok — result printed])
+    end
+
+    S1 --> S2
+
+    subgraph S2["Scenario 2 · ResultNode fatal failure"]
+        N2[create_result_node\nreturns NodeFailure] --> ERR2([Err NodeFailure caught])
+    end
+
+    S2 --> S3
+
+    subgraph S3["Scenario 3 · Agent::decide_result — Timeout retried"]
+        N3[ResultNode\nreturns Timeout every call]
+        N3 -->|retry 1| N3
+        N3 -->|retry 2| N3
+        N3 -->|retry 3 — exhausted| ERR3([Err Timeout — retries exhausted])
+    end
+
+    S3 --> S4
+
+    subgraph S4["Scenario 4 · Agent::decide_result — fatal aborts immediately"]
+        N4[ResultNode\nreturns NodeFailure] --> ERR4([Err NodeFailure — no retry])
+    end
+
+    S4 --> S5
+
+    subgraph S5["Scenario 5 · Flow::run_safe — ExecutionLimitExceeded"]
+        NA[Node A\naction=loop] -->|loop| NB[Node B\naction=loop]
+        NB -->|loop| NA
+        NA -->|max_steps=3 hit| ERR5([Err ExecutionLimitExceeded])
+    end
+```
+
+**AgentFlow patterns used:** `create_result_node` · `Agent::decide_result` · `Flow::run_safe` · `AgentFlowError` variants
+
 ## How to run
 
 Run the example using cargo. It doesn't require an LLM API key since it just demonstrates the error handling mechanics:

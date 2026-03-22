@@ -91,6 +91,226 @@ while let Some(step) = current_step.clone() {
 }
 ```
 
+## Execution diagram
+
+```mermaid
+graph TD
+    Start([Start]) --> S1
+
+    subgraph Workflow["Workflow — sequential steps with HITL after each"]
+        S1[title_search node
+LLM: search officer
+writes title_search key]
+        S1 --> H1{Human review
+approve / revise / restart / cancel}
+        H1 -->|approve| S2
+        H1 -->|revise| S1
+        H1 -->|restart| S1
+
+        S2[title_issuance node
+LLM: registry officer
+reads title_search
+writes title_issuance key]
+        S2 --> H2{Human review
+approve / revise / restart / cancel}
+        H2 -->|approve| S3
+        H2 -->|revise| S2
+        H2 -->|restart| S1
+
+        S3[legal_review node
+LLM: legal officer
+reads title_issuance
+writes legal_review key]
+        S3 --> H3{Human review
+approve / cancel}
+        H3 -->|approve| Done
+    end
+
+    Done([Workflow complete])
+```
+
+**AgentFlow patterns used:** `Workflow` · `create_node` · Human-in-the-Loop (CLI prompt after each step)
+
+## Execution diagram
+
+```mermaid
+graph TD
+    Start([Start]) --> S1
+
+    subgraph Workflow["Workflow — sequential steps, HITL after each"]
+        S1[title_search node\nLLM: search officer\nwrites title_search key]
+        S1 --> H1{Human review\na approve · r revise · d restart · c cancel}
+        H1 -->|approve| S2
+        H1 -->|revise| S1
+        H1 -->|restart| S1
+
+        S2[title_issuance node\nLLM: registry officer\nreads title_search\nwrites title_issuance key]
+        S2 --> H2{Human review\na · r · d · c}
+        H2 -->|approve| S3
+        H2 -->|revise| S2
+        H2 -->|restart| S1
+
+        S3[legal_review node\nLLM: legal officer\nreads title_issuance\nwrites legal_review key]
+        S3 --> H3{Human review\na · c}
+        H3 -->|approve| Done
+        H3 -->|cancel| Cancelled([Cancelled])
+    end
+
+    Done([Workflow complete])
+```
+
+**AgentFlow patterns used:** `Workflow` · `create_node` · Sequential steps · CLI-driven Human-in-the-Loop
+
+## Execution diagram
+
+```mermaid
+graph TD
+    Start([Start]) --> S1
+
+    subgraph Workflow["Workflow — sequential steps with CLI HITL after each"]
+        S1[title_search node\ngpt-4o-mini — search officer\nwrites title_search key]
+        S1 --> H1{Human review\na=approve · r=revise · d=restart · c=cancel}
+        H1 -->|approve| S2
+        H1 -->|revise| S1
+        H1 -->|restart| S1
+
+        S2[title_issuance node\ngpt-4o-mini — registry officer\nreads title_search\nwrites title_issuance key]
+        S2 --> H2{Human review\na · r · d · c}
+        H2 -->|approve| S3
+        H2 -->|revise| S2
+        H2 -->|restart| S1
+
+        S3[legal_review node\ngpt-4o-mini — legal officer\nreads title_issuance\nwrites legal_review key]
+        S3 --> H3{Human review\na · r · d · c}
+        H3 -->|approve| Done
+        H3 -->|cancel| Exit([Cancelled])
+    end
+
+    Done([Workflow complete])
+```
+
+**AgentFlow patterns used:** `Workflow` · `create_node` · CLI Human-in-the-Loop after each step
+
+## Execution diagram
+
+```mermaid
+graph TD
+    Start([Start]) --> S1
+
+    subgraph WF["Workflow — sequential steps, CLI HITL after each"]
+        S1[title_search node\ngpt-4o-mini: search officer\nwrites title_search key]
+        S1 --> H1{Human review\na=approve · r=revise\nd=restart · c=cancel}
+        H1 -->|approve| S2
+        H1 -->|revise| S1
+        H1 -->|restart| S1
+
+        S2[title_issuance node\ngpt-4o-mini: registry officer\nreads title_search\nwrites title_issuance key]
+        S2 --> H2{Human review\na · r · d · c}
+        H2 -->|approve| S3
+        H2 -->|revise| S2
+        H2 -->|restart| S1
+
+        S3[legal_review node\ngpt-4o-mini: legal officer\nreads title_issuance\nwrites legal_review key]
+        S3 --> H3{Human review\na · c}
+        H3 -->|approve| Done
+        H3 -->|cancel| Exit([Cancelled])
+    end
+
+    Done([Workflow complete])
+```
+
+**AgentFlow patterns used:** `Workflow` · `create_node` · CLI Human-in-the-Loop after each step
+
+## Execution diagram
+
+```mermaid
+graph TD
+    Start([Start]) --> S1
+
+    subgraph WF["Workflow — sequential steps, CLI HITL after each"]
+        S1[title_search node\ngpt-4o-mini — search officer\nwrites title_search key]
+        S1 --> H1{Human review\na=approve · r=revise · d=restart · c=cancel}
+        H1 -->|approve| S2
+        H1 -->|revise| S1
+        H1 -->|restart| S1
+
+        S2[title_issuance node\ngpt-4o-mini — registry officer\nreads title_search\nwrites title_issuance key]
+        S2 --> H2{Human review\na · r · d · c}
+        H2 -->|approve| S3
+        H2 -->|revise| S2
+        H2 -->|restart| S1
+
+        S3[legal_review node\ngpt-4o-mini — legal officer\nreads title_issuance\nwrites legal_review key]
+        S3 --> H3{Human review\na · r · d · c}
+        H3 -->|approve| Done
+        H3 -->|cancel| Exit([Cancelled])
+    end
+
+    Done([Workflow complete])
+```
+
+**AgentFlow patterns used:** `Workflow` · `create_node` · CLI Human-in-the-Loop after each step
+
+## Execution diagram
+
+```mermaid
+graph TD
+    Start([Start]) --> S1
+
+    subgraph WF["Workflow — sequential steps with CLI HITL after each"]
+        S1[title_search node\ngpt-4o-mini: search officer\nwrites title_search key]
+        S1 --> H1{Human review\na=approve · r=revise · d=restart · c=cancel}
+        H1 -->|approve| S2
+        H1 -->|revise| S1
+        H1 -->|restart| S1
+
+        S2[title_issuance node\ngpt-4o-mini: registry officer\nreads title_search\nwrites title_issuance key]
+        S2 --> H2{Human review\na · r · d · c}
+        H2 -->|approve| S3
+        H2 -->|revise| S2
+        H2 -->|restart| S1
+
+        S3[legal_review node\ngpt-4o-mini: legal officer\nreads title_issuance\nwrites legal_review key]
+        S3 --> H3{Human review\na · r · d · c}
+        H3 -->|approve| Done
+        H3 -->|cancel| Exit([Cancelled])
+    end
+
+    Done([Workflow complete])
+```
+
+**AgentFlow patterns used:** `Workflow` · `create_node` · CLI Human-in-the-Loop after each step
+
+## Execution diagram
+
+```mermaid
+graph TD
+    Start([Start]) --> S1
+
+    subgraph WF["Workflow — sequential steps, CLI HITL after each"]
+        S1[title_search node\ngpt-4o-mini: search officer\nwrites title_search key]
+        S1 --> H1{Human review\na=approve · r=revise\nd=restart · c=cancel}
+        H1 -->|approve| S2
+        H1 -->|revise| S1
+        H1 -->|restart| S1
+
+        S2[title_issuance node\ngpt-4o-mini: registry officer\nreads title_search\nwrites title_issuance key]
+        S2 --> H2{Human review\na · r · d · c}
+        H2 -->|approve| S3
+        H2 -->|revise| S2
+        H2 -->|restart| S1
+
+        S3[legal_review node\ngpt-4o-mini: legal officer\nreads title_issuance\nwrites legal_review key]
+        S3 --> H3{Human review\na · r · d · c}
+        H3 -->|approve| Done
+        H3 -->|cancel| Exit([Cancelled])
+    end
+
+    Done([Workflow complete])
+```
+
+**AgentFlow patterns used:** `Workflow` · `create_node` · CLI Human-in-the-Loop after each step
+
 ## How to run
 
 Ensure you have your `OPENAI_API_KEY` set in your environment or `.env` file, then run:

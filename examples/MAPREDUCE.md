@@ -70,6 +70,24 @@ let map_reduce = MapReduce::new(batch_mapper, reducer);
 let result = map_reduce.run(inputs).await;
 ```
 
+## Execution diagram
+
+```mermaid
+graph TD
+    Input([Input: Vec of SharedStore\none per document]) --> Batch
+
+    subgraph Batch["Batch.run — concurrent map"]
+        M1[Mapper node\ndoc 1 → LLM → summary 1]
+        M2[Mapper node\ndoc 2 → LLM → summary 2]
+        MN[Mapper node\ndoc N → LLM → summary N]
+    end
+
+    Batch --> Reducer[Reducer node\ncreate_batch_node\ncollect all summaries\njoin into one string]
+    Reducer --> Out([SharedStore\nall_summaries key])
+```
+
+**AgentFlow patterns used:** `MapReduce` · `Batch` · `create_node` · `create_batch_node`
+
 ## How to run
 
 Ensure you have your `OPENAI_API_KEY` set in your environment or `.env` file, then run:

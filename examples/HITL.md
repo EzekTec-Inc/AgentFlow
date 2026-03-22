@@ -66,6 +66,27 @@ drop(guard);
 let final_store = flow.run_safe(store).await.unwrap();
 ```
 
+## Execution diagram
+
+```mermaid
+graph TD
+    A([Start]) --> S1[step1 node\nwrites initial data]
+    S1 -->|action: approval_gate| G
+
+    subgraph HITL["HITL Gate (create_hitl_node)"]
+        G{human_approval\nkey present?}
+        G -->|No| SUS([Err: Suspended\nreason returned to host])
+    end
+
+    G -->|Yes| S3[final_step node\nconsumes approval]
+    SUS -->|Host injects\nhuman_approval key| G2{Re-run flow}
+    G2 --> G
+
+    S3 --> Done([Flow complete])
+```
+
+**AgentFlow patterns used:** `Flow` · `create_node` · `create_hitl_node` · `AgentFlowError::Suspended` · `run_safe`
+
 ## How to run
 
 Run the example using cargo. It doesn't require an LLM API key since it just demonstrates the state machine mechanics:

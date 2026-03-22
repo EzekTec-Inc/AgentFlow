@@ -68,6 +68,54 @@ let initial_store = TypedStore::new(initial_state);
 let final_store = flow.run(initial_store).await;
 ```
 
+## Execution diagram
+
+```mermaid
+graph TD
+    Boot([Boot]) --> Spawn[Spawn mcp_server process
+via stdio transport]
+    Spawn --> Connect[McpClient::connect
+discover available tools]
+
+    Connect --> Node1
+
+    subgraph Flow["TypedFlow — typed store T = AppState"]
+        Node1[research node
+create_typed_node
+call web_search via McpClient
+write result to typed store]
+        Node1 -->|action: summarise| Node2
+        Node2[summarise node
+create_typed_node
+call summarise via McpClient
+write summary to typed store]
+    end
+
+    Node2 --> Out([Typed store with final summary])
+```
+
+**AgentFlow patterns used:** `TypedFlow` · `create_typed_node` · `McpClient` · `McpCallResult`
+
+## Execution diagram
+
+```mermaid
+graph TD
+    Boot([Boot]) --> Spawn[Spawn mcp_server subprocess\nvia stdio transport]
+    Spawn --> Connect[McpClient::spawn_stdio\nlist_tools — discover available tools]
+
+    Connect --> Flow
+
+    subgraph Flow["TypedFlow — AppState"]
+        Crawl[crawl_goa_url node\ncreate_typed_node\ncalls McpClient.call_tool\nwrites artifacts to AppState]
+        Crawl -->|action: summarise| Summarise[render_report_summary node\ncreate_typed_node\ncalls McpClient.call_tool\nwrites summary to AppState]
+        Summarise -->|action: complete| Done
+    end
+
+    Done([TypedStore with final AppState])
+```
+
+**AgentFlow patterns used:** `TypedFlow` · `create_typed_node` · `McpClient` · `McpCallResult`
+
 ## How to run
 
 Because this client spawns the `mcp_server` binary as a subprocess, you must ensure the server is built first.

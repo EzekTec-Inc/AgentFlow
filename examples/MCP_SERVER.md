@@ -52,6 +52,74 @@ server.run().await?;
 
 Because this server communicates over `stdio`, it is meant to be executed as a subprocess by an MCP client, not run interactively in a terminal.
 
+## Execution diagram
+
+```mermaid
+graph LR
+    subgraph Server["McpServer (stdio JSON-RPC)"]
+        Skill[Skill::from_str
+parse YAML skill definition
+GoAResearchTools]
+        Skill --> Tools[Expose tools via MCP:
+crawl_goa_url · render_report_summary]
+        Tools --> Listen[Listen on stdin
+respond on stdout]
+    end
+
+    Client([Any MCP-compliant client]) -->|JSON-RPC request| Listen
+    Listen -->|JSON-RPC response| Client
+```
+
+**AgentFlow patterns used:** `McpServer` · `Skill` (declarative YAML tool definitions)
+
+## Execution diagram
+
+```mermaid
+graph LR
+    subgraph Server["McpServer — GoA_Research_Server v0.2.0  (stdio JSON-RPC)"]
+        Skill[Skill::parse\nGoAResearchTools YAML\ntools: crawl_goa_url\nrender_report_summary]
+        Skill --> Run[server.run\nlisten on stdin\nrespond on stdout]
+    end
+
+    Client([Any MCP-compliant client]) -->|JSON-RPC tool call| Run
+    Run -->|JSON-RPC result| Client
+```
+
+**AgentFlow patterns used:** `McpServer` · `Skill` (declarative YAML tool definitions)
+
+## Execution diagram
+
+```mermaid
+graph LR
+    subgraph Server["McpServer — GoA_Research_Server v0.2.0  (stdio JSON-RPC)"]
+        Skill[Skill::parse\nGoAResearchTools\ncrawl_goa_url · render_report_summary]
+        Skill --> Run[server.run\nlisten stdin → respond stdout]
+    end
+
+    Client([Any MCP-compliant client]) -->|JSON-RPC tool call| Run
+    Run -->|JSON-RPC result| Client
+```
+
+**AgentFlow patterns used:** `McpServer` · `Skill` (declarative YAML tool definitions)
+
+## Execution diagram
+
+```mermaid
+graph LR
+    subgraph Server["McpServer — GoA_Research_Server (stdio JSON-RPC)"]
+        Skill[Skill::parse\nGoAResearchTools YAML]
+        Skill --> T1[crawl_goa_url\ncommand: curl -sL]
+        Skill --> T2[render_report_summary\ncommand: printf]
+        T1 --> Listen[Listen on stdin\nRespond on stdout]
+        T2 --> Listen
+    end
+
+    Client([Any MCP-compliant client]) -->|JSON-RPC request| Listen
+    Listen -->|JSON-RPC response| Client
+```
+
+**AgentFlow patterns used:** `McpServer` · `Skill` (declarative YAML tool definitions)
+
 ## How to run
 
 To test this server, you would typically configure an MCP client (like Claude Desktop or the AgentFlow MCP Client) to run this binary. However, you can compile and run it to verify it builds:

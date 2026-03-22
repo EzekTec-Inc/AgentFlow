@@ -5,16 +5,16 @@
 This example demonstrates the `Interactive REPL` pattern in AgentFlow.
 
 **Primary AgentFlow pattern:** `REPL shell`  
-**Why you would use it:** wrap AgentFlow patterns in an interactive loop.
+**Why you would use it:** Wrap AgentFlow patterns in an interactive loop.
 
 ## How the example works
 
-1. Run with: cargo run --example repl
-2. .unwrap_or("")
-3. .unwrap_or_default();
-4. flow.add_node("read", read_node);
-5. flow.add_node("eval", eval_node);
-6. flow.add_node("print", print_node);
+1. Run with: `cargo run --example repl`.
+2. The example initializes a flow composed of three core nodes: `read`, `eval`, and `print`.
+3. The `read` node collects user input from stdin and stores it in the shared store.
+4. The `eval` node runs your AgentFlow workflow or pattern using the stored input.
+5. The `print` node renders and prints results back to the terminal.
+6. The loop continues until the user enters a quit command (for example, `:quit`).
 
 ## Execution diagram
 

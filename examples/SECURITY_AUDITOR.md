@@ -5,16 +5,15 @@
 This example demonstrates the `Security Auditor` pattern in AgentFlow.
 
 **Primary AgentFlow pattern:** `Security analysis workflow`  
-**Why you would use it:** specialize an agent for audit-style output.
+**Why you would use it:** Specialize an agent for audit-style output.
 
 ## How the example works
 
-1. println!("Starting Security Auditor Workflow...");
-2. Crawler Flow: runs cargo clippy
-3. "run_clippy",
-4. create_tool_node(
-5. Parallel Analysis Fan-out
-6. "analyze_clippy",
+1. The example sets up a workflow that runs static analysis (e.g., `cargo clippy`) over a Rust crate.
+2. A crawler or runner node executes the analysis command and captures the output.
+3. A "run_clippy" tool node feeds the diagnostics into an analyzer agent.
+4. A parallel fan-out of analysis nodes can classify issues (security, correctness, style) concurrently.
+5. A final aggregation node formats the findings into a human-readable audit report.
 
 ## Execution diagram
 

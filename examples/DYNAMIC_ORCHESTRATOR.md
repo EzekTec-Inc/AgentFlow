@@ -94,6 +94,29 @@ flow.add_edge("dispatcher", "dispatcher", "dispatcher"); // Loop
 flow.add_edge("dispatcher", "aggregator", "aggregator"); // Exit loop
 ```
 
+## Execution diagram
+
+```mermaid
+graph TD
+    Boot([Boot]) --> Load[Load / create\nexamples/agents.toml]
+    Load --> Registry[Build AgentRegistry  researcher · coder · reviewer .]
+    Registry --> Planner
+
+    subgraph Flow["Flow (max 30 steps)"]
+        Planner[Planner node\nLLM → JSON plan array]
+        Planner -->|action: dispatcher| Dispatcher
+        Dispatcher[Dispatcher node\npop next AgentSpec]
+        Dispatcher -->|plan not empty\naction: dispatcher| Dispatcher
+        Dispatcher -->|plan empty\naction: aggregator| Aggregator
+        Aggregator[Aggregator node\nLLM synthesises report]
+        Aggregator -->|action: end| Done
+    end
+
+    Done([Final report printed])
+```
+
+**AgentFlow patterns used:** `Flow` · `create_node` · Dynamic agent registry · Planner-Dispatcher-Aggregator loop
+
 ## How to run
 
 Ensure you have your `OPENAI_API_KEY` set in your environment or `.env` file, then run:

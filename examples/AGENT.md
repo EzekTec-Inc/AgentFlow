@@ -69,6 +69,24 @@ let shared_store = std::sync::Arc::new(tokio::sync::RwLock::new(store));
 let result_store = agent.call(shared_store).await;
 ```
 
+## Execution diagram
+
+```mermaid
+graph TD
+    A([Start]) --> B[create_node\nread prompt from SharedStore]
+
+    subgraph Agent["Agent::with_retry — 3 attempts, 1 500 ms backoff"]
+        B --> C[rig · gpt-4o-mini\nprompt LLM]
+        C --> D[write response\nto SharedStore]
+    end
+
+    D --> E{Execution path}
+    E -->|agent.decide\nhigh-level| F([HashMap result])
+    E -->|agent.call\nlow-level| G([SharedStore result])
+```
+
+**AgentFlow patterns used:** `Node` · `Agent` · `Agent::with_retry`
+
 ## How to run
 
 Ensure you have your `OPENAI_API_KEY` set in your environment or `.env` file, then run:

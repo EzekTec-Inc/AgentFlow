@@ -61,6 +61,25 @@ let fut2 = agent2.decide(store2);
 let (result1, result2) = tokio::join!(fut1, fut2);
 ```
 
+## Execution diagram
+
+```mermaid
+graph TD
+    A([Start]) --> B[Prepare store1\nhaiku prompt]
+    A --> C[Prepare store2\nconcurrency prompt]
+
+    B --> D[Agent 1\ngpt-4o-mini / poetry\nretry ×2]
+    C --> E[Agent 2\ngpt-4o-mini / summarization\nretry ×2]
+
+    D -->|tokio::join!| F([Parallel await])
+    E -->|tokio::join!| F
+
+    F --> G[Print result1]
+    F --> H[Print result2]
+```
+
+**AgentFlow patterns used:** `Node` · `Agent::with_retry` · Parallel execution via `tokio::join!`
+
 ## How to run
 
 Ensure you have your `OPENAI_API_KEY` set in your environment or `.env` file, then run:

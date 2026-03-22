@@ -5,16 +5,15 @@
 This example demonstrates the `Self-Correcting Coder` pattern in AgentFlow.
 
 **Primary AgentFlow pattern:** `Self-correction loop`  
-**Why you would use it:** generate, validate, and repair code iteratively.
+**Why you would use it:** Generate, validate, and repair code iteratively.
 
 ## How the example works
 
-1. println!("Starting Self-Correcting Coder Workflow...");
-2. Sub-flow that generates code and compiles it
-3. Node 1: Generator
-4. create_node(|store: SharedStore| {
-5. .unwrap_or("")
-6. .agent("gpt-4o-mini")
+1. The workflow starts by printing a banner: `Starting Self-Correcting Coder Workflow...`.
+2. A sub-flow generates candidate code or patches for a given task.
+3. A compile or test node builds and runs the generated code, capturing any failures.
+4. If validation fails, a critique-and-repair node asks the model to analyze errors and propose a revised patch.
+5. The loop repeats until the code passes validation or a retry limit is reached.
 
 ## Execution diagram
 
