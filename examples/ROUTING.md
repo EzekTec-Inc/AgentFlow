@@ -38,26 +38,6 @@ graph TD
 
 ---
 
-## Execution diagram
-
-```mermaid
-graph TD
-    Start([Start — message key in SharedStore]) --> Triage
-
-    subgraph Flow["Flow::run — per message"]
-        Triage[triage node\ngpt-4o-mini\nclassifies intent\nwrites action key]
-        Triage -->|action: tech_support| Tech[tech_support node\ngpt-4o-mini\nwrites response key]
-        Triage -->|action: billing| Billing[billing node\ngpt-4o-mini\nwrites response key]
-        Triage -->|action: general| General[general node\ngpt-4o-mini\nwrites response key]
-    end
-
-    Tech --> Out([response key returned])
-    Billing --> Out
-    General --> Out
-```
-
-**AgentFlow patterns used:** `Flow` · `create_node` · Conditional routing via `action` key
-
 ## How to run
 
 Set `OPENAI_API_KEY` in your environment or `.env`, then:
