@@ -130,22 +130,31 @@ let result = flow.run(store).await;
 
 **Routing:** After every node executes, `Flow` removes `store["action"]` under a write lock and finds the matching outgoing edge. No matching edge → flow stops naturally. Consuming the key prevents state leaks across transitions.
 
-**Cycle prevention:** `.with_max_steps(n)` aborts after `n` node executions.
+**Pre-flight Graph Validation:** Before execution begins, `Flow::validate()` uses `petgraph` (Tarjan's SCC algorithm) to catch typos in edge names and automatically flags accidental infinite routing loops, halting initialization unless `max_steps` is explicitly opted into.
+
+**Cycle prevention:** `.with_max_steps(n)` explicitly allows cyclic graphs, automatically aborting after `n` node executions.
 
 ### TypedFlow\<T\>
 
-Compile-time typed alternative to `Flow`. State is a plain Rust struct — no `HashMap` key lookups.
+Compile-time typed alternative to `Flow`. State is a plain Rust struct (`T`), and transitions are governed by an Enum (`E`). This ensures no `HashMap` key lookups and guarantees valid routing paths.
+
+Additionally, `TypedFlow` executes via an actor model using lock-free message passing (mpsc channels), meaning nodes own the state without blocking `RwLock` contention.
 
 ```rust
-let mut flow: TypedFlow<MyState> = TypedFlow::new("draft");
-flow.add_node("draft",   create_typed_node(|mut s: MyState| async move { ... s }));
-flow.add_transition("draft", |s| if s.approved { None } else { Some("revise".into()) });
-flow.add_node("revise",  create_typed_node(|mut s: MyState| async move { ... s }));
-flow.add_transition("revise", |_| Some("draft".into()));
-flow.with_max_steps(20);
+enum Action { Revise, Next }
 
-let final_state = flow.run(initial_state).await;
+let mut flow: TypedFlow<MyState, Action> = TypedFlow::new().with_max_steps(20);
+flow.add_node("draft", create_typed_node(|mut store: TypedStore<MyState>| async move {
+    // ... modify store
+    (store, Some(Action::Revise)) 
+}));
+flow.add_edge("draft", Action::Revise, "revise");
+
+let final_store = flow.run(initial_store).await;
 ```
+
+**Telemetry & Observability:**
+`TypedStore<T>` inherently ships with a `FlowContext` object accessible via `store.context`. As nodes transition, AgentFlow natively times the execution latency of every node step, accumulating the metrics automatically lock-free.
 
 ### ParallelFlow
 

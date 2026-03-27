@@ -8,7 +8,7 @@ use tracing::{debug, info, instrument, warn};
 
 /// Core Node trait for typed state and enum-based routing
 pub trait TypedNode<T, E>: Send + Sync + DynClone {
-    /// Consume `input`, run the node's logic, and return the mutated store 
+    /// Consume `input`, run the node's logic, and return the mutated store
     /// along with an optional transition action.
     fn call(
         &self,
@@ -75,9 +75,9 @@ pub struct TypedFlow<T, E> {
     pub post_node_hook: Option<TypedFlowHookFn<T>>,
 }
 
-impl<T, E> TypedFlow<T, E> 
+impl<T, E> TypedFlow<T, E>
 where
-    E: std::hash::Hash + Eq + Clone + Send + Sync + 'static
+    E: std::hash::Hash + Eq + Clone + Send + Sync + 'static,
 {
     pub fn new() -> Self {
         Self {
@@ -133,14 +133,13 @@ where
 
     #[instrument(name = "typed_flow.run", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
     pub async fn run(&self, store: TypedStore<T>) -> TypedStore<T> {
-        self.run_internal(store, false).await.unwrap_or_else(|_| unreachable!())
+        self.run_internal(store, false)
+            .await
+            .unwrap_or_else(|_| unreachable!())
     }
 
     #[instrument(name = "typed_flow.run_safe", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
-    pub async fn run_safe(
-        &self,
-        store: TypedStore<T>,
-    ) -> Result<TypedStore<T>, AgentFlowError> {
+    pub async fn run_safe(&self, store: TypedStore<T>) -> Result<TypedStore<T>, AgentFlowError> {
         self.run_internal(store, true).await
     }
 
@@ -159,7 +158,7 @@ where
         let limit = self.max_steps.unwrap_or(usize::MAX);
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(TypedStore<T>, Option<E>, String)>(32);
-        
+
         let _ = tx.send((store, None, current_node_name)).await;
 
         while let Some((mut current_store, action_opt, current_name)) = rx.recv().await {
@@ -180,7 +179,9 @@ where
             if steps >= limit {
                 warn!(steps, limit, "TypedFlow exceeded max_steps limit");
                 if safe {
-                    return Err(AgentFlowError::ExecutionLimitExceeded("TypedFlow execution exceeded max_steps limit".to_string()));
+                    return Err(AgentFlowError::ExecutionLimitExceeded(
+                        "TypedFlow execution exceeded max_steps limit".to_string(),
+                    ));
                 } else {
                     current_store.limit_exceeded = true;
                     return Ok(current_store);
@@ -198,9 +199,11 @@ where
             let start_time = std::time::Instant::now();
             let (new_store, new_action_opt) = node.call(current_store).await;
             let elapsed = start_time.elapsed();
-            
+
             current_store = new_store;
-            current_store.context.record_node_duration(&next_node, elapsed);
+            current_store
+                .context
+                .record_node_duration(&next_node, elapsed);
 
             if let Some(hook) = &self.post_node_hook {
                 current_store = hook(&next_node, current_store).await;
@@ -217,9 +220,9 @@ where
     }
 }
 
-impl<T, E> Clone for TypedFlow<T, E> 
+impl<T, E> Clone for TypedFlow<T, E>
 where
-    E: Clone
+    E: Clone,
 {
     fn clone(&self) -> Self {
         let mut new_nodes = HashMap::new();
@@ -237,9 +240,9 @@ where
     }
 }
 
-impl<T, E> Default for TypedFlow<T, E> 
+impl<T, E> Default for TypedFlow<T, E>
 where
-    E: std::hash::Hash + Eq + Clone + Send + Sync + 'static
+    E: std::hash::Hash + Eq + Clone + Send + Sync + 'static,
 {
     fn default() -> Self {
         Self::new()

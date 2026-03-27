@@ -46,7 +46,7 @@ The foundation. Every other module builds on these.
 flowchart TD
     SS[(SharedStore<br>Arc&lt;RwLock&lt;HashMap&gt;&gt;)] --> Node[Node / ResultNode]
     Node --> Flow[Flow<br>graph executor]
-    Node --> TF[TypedFlow&lt;T&gt;<br>compile-time state]
+    Node --> TF[TypedFlow&lt;T, E&gt;<br>compile-time enum routing]
     Node --> PF[ParallelFlow<br>fan-out / fan-in]
     Flow --> Batch[Batch / ParallelBatch]
     SD[StateDiff] --> Node
@@ -59,7 +59,7 @@ flowchart TD
 | `SharedStore` | Central `Arc<RwLock<HashMap>>` data bus |
 | `SimpleNode` / `ResultNode` | Infallible / fallible async node trait objects |
 | `Flow` | Labeled-edge graph executor; routes via `"action"` key |
-| `TypedFlow<T>` | Compile-time typed state machine |
+| `TypedFlow<T, E>` | Compile-time typed state machine with Enum routing and actor-model execution |
 | `ParallelFlow` | Fan-out N independent flows, fan-in with a merge fn |
 | `StateDiff` | Lockless node output; framework applies under one write lock |
 | `Batch` / `ParallelBatch` | Sequential / concurrent node-over-items execution |

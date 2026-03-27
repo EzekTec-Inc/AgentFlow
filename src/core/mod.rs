@@ -11,12 +11,12 @@ pub mod node;
 pub mod parallel;
 /// Shared state storage.
 pub mod store;
+/// Telemetry metrics and context.
+pub mod telemetry;
 /// Strongly-typed flow orchestrator.
 pub mod typed_flow;
 /// Strongly-typed state storage.
 pub mod typed_store;
-/// Telemetry metrics and context.
-pub mod telemetry;
 
 pub use batch::{Batch, ParallelBatch};
 pub use error::AgentFlowError;
@@ -27,6 +27,6 @@ pub use node::{
 };
 pub use parallel::ParallelFlow;
 pub use store::Store;
+pub use telemetry::FlowContext;
 pub use typed_flow::{create_typed_node, SimpleTypedNode, TypedFlow, TypedNode};
 pub use typed_store::TypedStore;
-pub use telemetry::FlowContext;

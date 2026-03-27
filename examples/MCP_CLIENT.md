@@ -12,7 +12,7 @@ This example demonstrates how to create a Model Context Protocol (MCP) client in
 The core of this example is the integration between an MCP Client and a strongly typed AgentFlow state machine (`TypedFlow<AppState>`).
 1. **Spawn MCP Server**: The client spawns `mcp_server` as a subprocess and connects its standard I/O channels.
 2. **Discover Tools**: The client queries the server for its list of available tools.
-3. **Execute Flow**: An LLM agent (powered by `rig`) reads its state, calls the MCP tools using `client.call_tool()`, parses the JSON output, and updates the `AppState` iteratively.
+3. **Execute Flow**: An LLM agent reads its owned lock-free state, calls the MCP tools using `client.call_tool()`, parses the JSON output, updates the `AppState` directly, and returns it alongside an `Action` Enum variant.
 
 ### Step-by-Step Code Walkthrough
 
@@ -32,14 +32,12 @@ let mcp_tools = client.list_tools().await?;
 info!("Discovered {} MCP tools", mcp_tools.len());
 ```
 
-Next, we wrap the client in an `Arc<Mutex<McpClient>>` so it can be safely shared across our async flow nodes. Inside a typed node, we can lock the client and execute an MCP tool (like `crawl_goa_url` defined in the server example).
+Next, we wrap the client in an `Arc<Mutex<McpClient>>` so it can be safely shared across our async flow nodes. Inside a typed node, we can lock the client and execute an MCP tool (like `crawl_goa_url` defined in the server example). Because nodes receive owned `TypedStore` instances, we no longer need `.write().await` blocking lock scopes.
 
 ```rust
-let crawl_node = create_typed_node(move |store: TypedStore<AppState>| {
+let crawl_node = create_typed_node(move |mut store: TypedStore<AppState>| {
     let mcp_client_crawl = Arc::clone(&mcp_client);
     async move {
-        let mut state = store.inner.write().await;
-        
         // Execute the MCP tool remotely on the server
         let crawl_result = {
             let mut client = mcp_client_crawl.lock().await;
@@ -48,20 +46,21 @@ let crawl_node = create_typed_node(move |store: TypedStore<AppState>| {
 
         // Parse and handle the result
         if let Ok(result) = crawl_result {
-            state.artifacts.push(CrawlArtifact { /* ... */ });
-            state.state = StoreState::Crawled;
+            store.inner.artifacts.push(CrawlArtifact { /* ... */ });
+            store.inner.state = StoreState::Crawled;
         }
 
-        store.clone()
+        (store, Some(Action::ReviewCrawlResults))
     }
 });
 ```
 
-Finally, we construct a strongly typed state machine (`TypedFlow`) and run it to completion. The orchestrator will automatically loop until the state hits the `Complete` or `Failed` action.
+Finally, we construct a strongly typed state machine (`TypedFlow<AppState, Action>`) mapped by Enums, and run it to completion via actor message passing.
 
 ```rust
-let mut flow = TypedFlow::<AppState>::new().with_max_steps(10);
-flow.add_node(Action::CrawlGoADesignSystem, crawl_node);
+let mut flow = TypedFlow::<AppState, Action>::new().with_max_steps(10);
+flow.add_node("Crawl", crawl_node);
+flow.add_edge("Crawl", Action::ReviewCrawlResults, "Review");
 
 // Initialize state and start the flow
 let initial_store = TypedStore::new(initial_state);

@@ -5,9 +5,9 @@ use agentflow::patterns::rag::Rag;
 use agentflow::patterns::skill::SkillInjector;
 use agentflow::skills::{Skill, SkillTool};
 use rig::client::CompletionClient;
-use rig::completion::Prompt;
-use rig::completion::Prompt;
 use rig::client::ProviderClient;
+use rig::completion::Prompt;
+use rig::completion::Prompt;
 use rig::providers::openai::Client;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -148,7 +148,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "You are a helpful assistant.\nSkill Instructions: {}",
                 skill_instructions
             );
-            let agent = openai_client.agent("gpt-4o-mini").preamble(&preamble).build();
+            let agent = openai_client
+                .agent("gpt-4o-mini")
+                .preamble(&preamble)
+                .build();
 
             let answer: String = agent
                 .prompt(&format!("Context: {}\n\nQuestion: {}", context, query))
@@ -171,10 +174,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     query_flow.add_node("rag_pipeline", rag);
 
     let query_store = Arc::new(RwLock::new(HashMap::new()));
-    query_store
-        .write()
-        .await
-        .insert("query".to_string(), Value::String("Does AgentFlow support Human-in-the-Loop?".to_string()));
+    query_store.write().await.insert(
+        "query".to_string(),
+        Value::String("Does AgentFlow support Human-in-the-Loop?".to_string()),
+    );
 
     println!("Querying the ingested knowledge base...");
     let final_result = query_flow.run(query_store).await;

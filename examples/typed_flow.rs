@@ -55,7 +55,11 @@ async fn main() {
 
     // ── Draft node ────────────���───────────────────────────────────────────────
     let draft_node = create_typed_node(|mut store: TypedStore<ContentState>| async move {
-        let (topic, critique, revisions) = (store.inner.topic.clone(), store.inner.critique.clone(), store.inner.revisions);
+        let (topic, critique, revisions) = (
+            store.inner.topic.clone(),
+            store.inner.critique.clone(),
+            store.inner.revisions,
+        );
 
         let prompt = if critique.is_empty() {
             format!(
@@ -109,7 +113,7 @@ async fn main() {
                 .trim()
                 .to_string();
         }
-        
+
         if approved {
             (store, None)
         } else {

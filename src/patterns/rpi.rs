@@ -69,7 +69,9 @@ impl RpiWorkflow {
     /// Create an empty `RpiWorkflow`. Register nodes with the `with_*` builder
     /// methods before calling [`run`](Self::run).
     pub fn new() -> Self {
-        Self { flow: Flow::new().with_max_steps(30) }
+        Self {
+            flow: Flow::new().with_max_steps(30),
+        }
     }
 
     /// Set the maximum number of node executions to prevent infinite loops.

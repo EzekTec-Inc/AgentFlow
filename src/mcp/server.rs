@@ -20,7 +20,18 @@ use tracing::{debug, warn};
 const MCP_TOOL_TIMEOUT: Duration = Duration::from_secs(30);
 const RESOURCE_URI_PREFIX: &str = "agentflow://skill";
 const BLOCKED_SHELL_COMMANDS: &[&str] = &[
-    "sh", "bash", "cmd", "powershell", "pwsh", "zsh", "fish", "dash", "ash", "csh", "tcsh", "ksh",
+    "sh",
+    "bash",
+    "cmd",
+    "powershell",
+    "pwsh",
+    "zsh",
+    "fish",
+    "dash",
+    "ash",
+    "csh",
+    "tcsh",
+    "ksh",
 ];
 
 async fn wait_with_timeout(

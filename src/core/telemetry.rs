@@ -37,7 +37,10 @@ impl FlowContext {
 
     /// Record the duration for a specific node's execution.
     pub fn record_node_duration(&mut self, node_name: &str, duration: Duration) {
-        let entry = self.node_durations.entry(node_name.to_string()).or_default();
+        let entry = self
+            .node_durations
+            .entry(node_name.to_string())
+            .or_default();
         *entry += duration;
     }
 

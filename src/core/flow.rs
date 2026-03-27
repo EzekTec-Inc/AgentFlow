@@ -265,7 +265,10 @@ impl Flow {
             let sccs = petgraph::algo::tarjan_scc(&graph);
             for scc in sccs {
                 if scc.len() > 1 || (scc.len() == 1 && graph.contains_edge(scc[0], scc[0])) {
-                    let mut cycle_nodes = scc.iter().map(|idx| *graph.node_weight(*idx).unwrap()).collect::<Vec<_>>();
+                    let mut cycle_nodes = scc
+                        .iter()
+                        .map(|idx| *graph.node_weight(*idx).unwrap())
+                        .collect::<Vec<_>>();
                     cycle_nodes.sort();
                     return Err(AgentFlowError::GraphBuildError(format!("Infinite cycle detected involving nodes {:?}. Use `with_max_steps` to explicitly allow cyclic flows.", cycle_nodes)));
                 }

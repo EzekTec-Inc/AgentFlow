@@ -33,7 +33,13 @@ struct AppState {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let auth_token = std::env::var("AGENTFLOW_AUTH_TOKEN").unwrap_or_else(|_| {
-        let token = format!("{:x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros());
+        let token = format!(
+            "{:x}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros()
+        );
         println!("WARNING: AGENTFLOW_AUTH_TOKEN not set.");
         println!("Generated temporary auth token: {}", token);
         token
@@ -59,9 +65,12 @@ async fn run_handler(
     headers: HeaderMap,
     Json(payload): Json<RunRequest>,
 ) -> Result<Json<RunResponse>, (StatusCode, String)> {
-    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok()).unwrap_or("");
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
     let expected = format!("Bearer {}", state.auth_token);
-    
+
     if auth_header != expected {
         return Err((StatusCode::UNAUTHORIZED, "Unauthorized".to_string()));
     }
@@ -115,14 +124,16 @@ mod tests {
             server_cmd: "non_existent_command_12345".to_string(),
             server_args: vec![],
         };
-        
-        let state = Arc::new(AppState { auth_token: "test-token".to_string() });
+
+        let state = Arc::new(AppState {
+            auth_token: "test-token".to_string(),
+        });
         let mut headers = HeaderMap::new();
         headers.insert("authorization", "Bearer test-token".parse().unwrap());
-        
+
         let res_wrapper = run_handler(State(state), headers, Json(req)).await;
         let res = res_wrapper.unwrap().0;
-        
+
         assert_eq!(res.status, "error");
         assert!(res
             .error

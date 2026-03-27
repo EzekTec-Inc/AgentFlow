@@ -4,32 +4,33 @@
 
 This example demonstrates the `Typed Flow` pattern in AgentFlow.
 
-**Primary AgentFlow pattern:** `TypedFlow`  
-**Why you would use it:** model transitions with compile-time state types.
+**Primary AgentFlow pattern:** `TypedFlow<T, E>`  
+**Why you would use it:** To model state transitions with compile-time, enum-based state types and actions.
 
 ## How the example works
 
 1. # Example: typed_flow.rs
 2. Real-world TypedFlow example: a multi-stage content pipeline backed by a real
 3. count. The flow loops through Draft → Critique → Revise until the LLM critic
-4. This showcases TypedFlow's key advantage over the HashMap-based Flow: the state
-5. Run with: cargo run --example typed-flow
-6. .unwrap_or("")
+   approves or the revision limit is reached.
+4. This showcases TypedFlow's key advantage over the HashMap-based Flow: the state 
+   is a plain Rust struct and routing is driven by Enums. No string key lookups, full type safety, and guaranteed enum paths.
+5. Additionally, the nodes pass state as owned lock-free message passing, eliminating locking contention.
 
 ## Execution diagram
 
 ```mermaid
 flowchart TD
-    A[Typed input state] --> B[Typed node / transition]
-    B --> C[Next typed state]
-    C --> D[More typed steps]
-    D --> E[Typed final result]
+    A[Typed input state + Enum action] --> B[Typed node / transition]
+    B -->|Action::Review| C[Next typed state]
+    C -->|Action::Revise| B
+    C -->|None| E[Typed final result]
 ```
 
 ## Key implementation details
 
 - The example source is `examples/typed_flow.rs`.
-- It uses AgentFlow primitives to move data through a store, flow, or higher-level pattern wrapper.
+- It uses AgentFlow primitives to move owned state data through a flow in a lock-free actor model.
 - The implementation is meant to be adapted by swapping in your own prompts, tool handlers, retrieval logic, or business rules.
 - When an LLM provider is used, the example relies on `rig` and environment-provided credentials.
 
