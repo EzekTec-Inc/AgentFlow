@@ -195,8 +195,12 @@ where
                 current_store = hook(&next_node, current_store).await;
             }
 
+            let start_time = std::time::Instant::now();
             let (new_store, new_action_opt) = node.call(current_store).await;
+            let elapsed = start_time.elapsed();
+            
             current_store = new_store;
+            current_store.context.record_node_duration(&next_node, elapsed);
 
             if let Some(hook) = &self.post_node_hook {
                 current_store = hook(&next_node, current_store).await;

@@ -1,0 +1,11 @@
+--- src/core/mod.rs
++++ src/core/mod.rs
+@@ -12,6 +12,8 @@
+ pub mod store;
+ /// Strongly-typed flow orchestrator.
+ pub mod typed_flow;
+ /// Strongly-typed state storage.
+ pub mod typed_store;
++/// Telemetry context for observability.
++pub mod telemetry;
+ 

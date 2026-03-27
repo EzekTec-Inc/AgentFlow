@@ -1,9 +1,8 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use crate::core::telemetry::FlowContext;
 
 /// A strongly-typed, async-safe state container for use with [`TypedFlow`].
 ///
-/// `TypedStore<T>` wraps any `T: Send + Sync` in an `Arc<RwLock<T>>`, giving
+/// `TypedStore<T>` wraps any `T: Send + Sync`, giving
 /// you compile-time type safety without the runtime overhead of
 /// `HashMap<String, Value>` casts.
 ///
@@ -62,6 +61,9 @@ pub struct TypedStore<T> {
     /// [`TypedFlow::run`]: crate::core::typed_flow::TypedFlow::run
     /// [`TypedFlow::run_safe`]: crate::core::typed_flow::TypedFlow::run_safe
     pub limit_exceeded: bool,
+
+    /// Telemetry context tracking execution time and tokens.
+    pub context: crate::core::telemetry::FlowContext,
 }
 
 impl<T> TypedStore<T> {
@@ -70,6 +72,7 @@ impl<T> TypedStore<T> {
         Self {
             inner: state,
             limit_exceeded: false,
+            context: crate::core::telemetry::FlowContext::new(),
         }
     }
 
@@ -87,6 +90,7 @@ impl<T: Clone> Clone for TypedStore<T> {
         Self {
             inner: self.inner.clone(),
             limit_exceeded: self.limit_exceeded,
+            context: self.context.clone(),
         }
     }
 }
