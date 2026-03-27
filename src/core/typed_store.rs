@@ -51,7 +51,7 @@ use tokio::sync::RwLock;
 pub struct TypedStore<T> {
     /// The inner `Arc<RwLock<T>>`. Access state via `.read().await` /
     /// `.write().await`.
-    pub inner: Arc<RwLock<T>>,
+    pub inner: T,
 
     /// Set to `true` by [`TypedFlow::run`] when execution was halted because
     /// `max_steps` was reached. Always `false` for a freshly created store.
@@ -68,7 +68,7 @@ impl<T> TypedStore<T> {
     /// Create a new `TypedStore` wrapping `state`.
     pub fn new(state: T) -> Self {
         Self {
-            inner: Arc::new(RwLock::new(state)),
+            inner: state,
             limit_exceeded: false,
         }
     }
@@ -82,12 +82,10 @@ impl<T> TypedStore<T> {
     }
 }
 
-impl<T> Clone for TypedStore<T> {
-    /// Clones the `Arc` — both instances share the same underlying `T`.
-    /// `T` does not need to implement `Clone`.
+impl<T: Clone> Clone for TypedStore<T> {
     fn clone(&self) -> Self {
         Self {
-            inner: Arc::clone(&self.inner),
+            inner: self.inner.clone(),
             limit_exceeded: self.limit_exceeded,
         }
     }

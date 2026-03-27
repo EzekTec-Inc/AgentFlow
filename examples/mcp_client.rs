@@ -139,7 +139,7 @@ async fn main() -> Result<(), AgentFlowError> {
         agent_error: None,
     };
 
-    let mut flow = TypedFlow::<AppState>::new().with_max_steps(10);
+    let mut flow = TypedFlow::<AppState, Action>::new().with_max_steps(10);
 
     let openai_client_crawl = openai_client.clone();
     let mcp_client_crawl = Arc::clone(&mcp_client);
@@ -154,7 +154,7 @@ async fn main() -> Result<(), AgentFlowError> {
                 error!("Max retries exceeded. Failing.");
                 state.state = StoreState::Failed;
                 state.next_action = Action::Failed;
-                return store.clone();
+                return (store.clone(), None);
             }
 
             let readme_url =
@@ -168,7 +168,7 @@ async fn main() -> Result<(), AgentFlowError> {
                 });
                 state.state = StoreState::Failed;
                 state.next_action = Action::Failed;
-                return store.clone();
+                return (store.clone(), None);
             }
 
             let crawl_result = {
@@ -247,7 +247,7 @@ async fn main() -> Result<(), AgentFlowError> {
                 }
             }
 
-            store.clone()
+            (store.clone(), Some(state.next_action.clone()))
         }
     });
 
@@ -319,7 +319,7 @@ async fn main() -> Result<(), AgentFlowError> {
                     state.next_action = Action::WriteReport;
                 }
             }
-            store.clone()
+            (store.clone(), Some(state.next_action.clone()))
         }
     });
 
@@ -337,7 +337,7 @@ async fn main() -> Result<(), AgentFlowError> {
                 });
                 state.state = StoreState::Failed;
                 state.next_action = Action::Failed;
-                return store.clone();
+                return (store.clone(), None);
             }
 
             let report_markdown = if let Some(first) = state.artifacts.first() {
@@ -389,7 +389,7 @@ async fn main() -> Result<(), AgentFlowError> {
                     state.next_action = Action::Failed;
                 }
             }
-            store.clone()
+            (store.clone(), Some(state.next_action.clone()))
         }
     });
 
@@ -397,19 +397,9 @@ async fn main() -> Result<(), AgentFlowError> {
     flow.add_node("Review", review_node);
     flow.add_node("Report", report_node);
 
-    flow.add_transition("Crawl", |state: &AppState| match state.next_action {
-        Action::ReviewCrawlResults => Some("Review".to_string()),
-        Action::Failed => None,
-        _ => None,
-    });
-
-    flow.add_transition("Review", |state: &AppState| match state.next_action {
-        Action::WriteReport => Some("Report".to_string()),
-        Action::CrawlGoADesignSystem => Some("Crawl".to_string()),
-        _ => None,
-    });
-
-    flow.add_transition("Report", |_state: &AppState| None);
+    flow.add_edge("Crawl", Action::ReviewCrawlResults, "Review");
+    flow.add_edge("Review", Action::WriteReport, "Report");
+    flow.add_edge("Review", Action::CrawlGoADesignSystem, "Crawl");
 
     let store = TypedStore::new(initial_state);
     let final_store = flow.run(store).await;

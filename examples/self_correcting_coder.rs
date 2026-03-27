@@ -3,7 +3,6 @@ use agentflow::core::node::{create_node, Node, SharedStore};
 use agentflow::patterns::agent::Agent;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
-use rig::completion::Prompt;
 use rig::client::ProviderClient;
 use rig::providers::openai::Client;
 use serde_json::Value;

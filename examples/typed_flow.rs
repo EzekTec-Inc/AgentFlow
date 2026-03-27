@@ -29,6 +29,12 @@ struct ContentState {
     revisions: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum Action {
+    Review,
+    Revise,
+}
+
 async fn llm(system: &str, user: &str) -> String {
     let client = providers::openai::Client::from_env();
     let agent = client.agent("gpt-4o-mini").preamble(system).build();
@@ -45,14 +51,11 @@ async fn main() {
         .with_env_filter(EnvFilter::new("agentflow=debug,typed_flow=debug"))
         .init();
 
-    let mut flow = TypedFlow::<ContentState>::new().with_max_steps(12);
+    let mut flow = TypedFlow::<ContentState, Action>::new().with_max_steps(12);
 
-    // ── Draft node ────────────────────────────────────────────────────────────
-    let draft_node = create_typed_node(|store: TypedStore<ContentState>| async move {
-        let (topic, critique, revisions) = {
-            let g = store.inner.read().await;
-            (g.topic.clone(), g.critique.clone(), g.revisions)
-        };
+    // ── Draft node ────────────���───────────────────────────────────────────────
+    let draft_node = create_typed_node(|mut store: TypedStore<ContentState>| async move {
+        let (topic, critique, revisions) = (store.inner.topic.clone(), store.inner.critique.clone(), store.inner.revisions);
 
         let prompt = if critique.is_empty() {
             format!(
@@ -74,17 +77,14 @@ async fn main() {
         .await;
         println!("[Draft]\n{}\n", draft.trim());
 
-        {
-            let mut g = store.inner.write().await;
-            g.draft = draft;
-            g.revisions += 1;
-        }
-        store
+        store.inner.draft = draft;
+        store.inner.revisions += 1;
+        (store, Some(Action::Review))
     });
 
     // ── Critique node ─────────────────────────────────────────────────────────
-    let critique_node = create_typed_node(|store: TypedStore<ContentState>| async move {
-        let draft = store.inner.read().await.draft.clone();
+    let critique_node = create_typed_node(|mut store: TypedStore<ContentState>| async move {
+        let draft = store.inner.draft.clone();
 
         println!("[Critique] Reviewing draft…");
         let verdict = llm(
@@ -95,38 +95,33 @@ async fn main() {
         .await;
         println!("[Critique] {}\n", verdict.trim());
 
-        {
-            let mut g = store.inner.write().await;
-            if verdict.trim().starts_with("APPROVED") {
-                g.approved = true;
-                g.critique = String::new();
-            } else {
-                g.approved = false;
-                g.critique = verdict
-                    .trim()
-                    .strip_prefix("REVISE:")
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-            }
+        let mut approved = false;
+        if verdict.trim().starts_with("APPROVED") {
+            store.inner.approved = true;
+            store.inner.critique = String::new();
+            approved = true;
+        } else {
+            store.inner.approved = false;
+            store.inner.critique = verdict
+                .trim()
+                .strip_prefix("REVISE:")
+                .unwrap_or("")
+                .trim()
+                .to_string();
         }
-        store
+        
+        if approved {
+            (store, None)
+        } else {
+            (store, Some(Action::Revise))
+        }
     });
 
     flow.add_node("draft", draft_node);
     flow.add_node("critique", critique_node);
 
-    // draft → critique always
-    flow.add_transition("draft", |_| Some("critique".to_string()));
-
-    // critique → draft only if not approved
-    flow.add_transition("critique", |state| {
-        if state.approved {
-            None
-        } else {
-            Some("draft".to_string())
-        }
-    });
+    flow.add_edge("draft", Action::Review, "critique");
+    flow.add_edge("critique", Action::Revise, "draft");
 
     let topic = "How Rust's borrow checker prevents use-after-free bugs";
 
@@ -143,11 +138,11 @@ async fn main() {
 
     let store = TypedStore::new(initial);
     let final_store = flow.run(store).await;
-    let final_state = final_store.inner.read().await;
+    let final_state = final_store.inner;
 
     println!(
-        "=== Approved Draft (after {} revision(s)) ===\n",
-        final_state.revisions
+        "=== Approved Draft (after {} revision(s)) ===\n\n{}",
+        final_state.revisions,
+        final_state.draft.trim()
     );
-    println!("{}", final_state.draft.trim());
 }

@@ -19,13 +19,13 @@ enum Action {
 async fn test_typed_flow_linear() {
     let mut flow = TypedFlow::<MyState, Action>::new();
 
-    let a = create_typed_node(|mut store: TypedStore<MyState>| async move {
-        store.inner.step_a = true;
+    let a = create_typed_node(|store: TypedStore<MyState>| async move {
+        store.inner.write().await.step_a = true;
         (store, Some(Action::Next))
     });
 
-    let b = create_typed_node(|mut store: TypedStore<MyState>| async move {
-        store.inner.step_b = true;
+    let b = create_typed_node(|store: TypedStore<MyState>| async move {
+        store.inner.write().await.step_b = true;
         (store, None)
     });
 
@@ -42,7 +42,7 @@ async fn test_typed_flow_linear() {
 
     let result = flow.run(store).await;
 
-    let state = result.inner;
+    let state = result.inner.read().await;
     assert!(state.step_a);
     assert!(state.step_b);
 }
@@ -51,8 +51,8 @@ async fn test_typed_flow_linear() {
 async fn test_typed_flow_run_safe_cycle() {
     let mut flow = TypedFlow::<MyState, Action>::new().with_max_steps(2);
 
-    let node = create_typed_node(|mut store: TypedStore<MyState>| async move {
-        store.inner.count += 1;
+    let node = create_typed_node(|store: TypedStore<MyState>| async move {
+        store.inner.write().await.count += 1;
         (store, Some(Action::Loop))
     });
 

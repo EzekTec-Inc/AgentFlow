@@ -49,10 +49,6 @@ pub enum AgentFlowError {
     #[error("Type mismatch: {0}")]
     TypeMismatch(String),
 
-    /// The Flow graph is invalid (e.g., contains a missing node reference or an infinite cycle).
-    #[error("Graph build error: {0}")]
-    GraphBuildError(String),
-
     /// Any other error that doesn't fit a specific variant above.
     #[error("Error: {0}")]
     Custom(String),

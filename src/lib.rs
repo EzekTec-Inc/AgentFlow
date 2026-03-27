@@ -94,7 +94,7 @@ pub mod prelude {
     pub use crate::core::parallel::ParallelFlow;
     pub use crate::core::store::Store;
     pub use crate::core::typed_flow::{
-        create_typed_node, SimpleTypedNode, TransitionFn, TypedFlow, TypedNode,
+        create_typed_node, SimpleTypedNode, TypedFlow, TypedNode,
     };
     pub use crate::core::typed_store::TypedStore;
     pub use crate::patterns::agent::Agent;
@@ -118,7 +118,7 @@ pub use crate::core::node::{
 pub use crate::core::parallel::ParallelFlow;
 pub use crate::core::store::Store;
 pub use crate::core::typed_flow::{
-    create_typed_node, SimpleTypedNode, TransitionFn, TypedFlow, TypedNode,
+    create_typed_node, SimpleTypedNode, TypedFlow, TypedNode,
 };
 pub use crate::core::typed_store::TypedStore;
 pub use crate::patterns::agent::Agent;

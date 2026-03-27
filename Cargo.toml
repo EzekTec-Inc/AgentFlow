@@ -25,6 +25,7 @@ anyhow = "1.0.102"
 thiserror = "2"
 rmcp = { version = "1.2.0", features = ["client", "server", "transport-child-process", "transport-io"], optional = true }
 axum = "0.8.4"
+petgraph = "0.8.3"
 
 [dev-dependencies]
 chrono = { version = "0.4", features = ["serde"] }

@@ -221,6 +221,60 @@ impl Flow {
             .insert(action.to_string(), to.to_string());
     }
 
+    /// Validate the graph for structural integrity prior to execution.
+    ///
+    /// This performs two checks:
+    /// 1. **Reachability**: Ensures all defined edges point to valid, registered nodes.
+    /// 2. **Cycle Detection**: Uses Tarjan's Strongly Connected Components algorithm
+    ///    to detect cycles. If a cycle is found and `max_steps` is not set, returns
+    ///    a `GraphBuildError`.
+    pub fn validate(&self) -> Result<(), AgentFlowError> {
+        let start_node = self.start_node.as_ref().ok_or_else(|| {
+            AgentFlowError::GraphBuildError("No start node defined in Flow".into())
+        })?;
+
+        if !self.nodes.contains_key(start_node) {
+            return Err(AgentFlowError::GraphBuildError(format!(
+                "Start node '{}' not found in registered nodes",
+                start_node
+            )));
+        }
+
+        let mut graph = petgraph::graph::DiGraph::<&str, &str>::new();
+        let mut node_indices = HashMap::new();
+
+        for name in self.nodes.keys() {
+            node_indices.insert(name.as_str(), graph.add_node(name.as_str()));
+        }
+
+        for (from_node, actions) in &self.edges {
+            let from_idx = *node_indices.get(from_node.as_str()).unwrap();
+            for (action, to_node) in actions {
+                if let Some(&to_idx) = node_indices.get(to_node.as_str()) {
+                    graph.add_edge(from_idx, to_idx, action.as_str());
+                } else {
+                    return Err(AgentFlowError::GraphBuildError(format!(
+                        "Edge from '{}' via action '{}' points to missing node '{}'",
+                        from_node, action, to_node
+                    )));
+                }
+            }
+        }
+
+        if self.max_steps.is_none() {
+            let sccs = petgraph::algo::tarjan_scc(&graph);
+            for scc in sccs {
+                if scc.len() > 1 || (scc.len() == 1 && graph.contains_edge(scc[0], scc[0])) {
+                    let mut cycle_nodes = scc.iter().map(|idx| *graph.node_weight(*idx).unwrap()).collect::<Vec<_>>();
+                    cycle_nodes.sort();
+                    return Err(AgentFlowError::GraphBuildError(format!("Infinite cycle detected involving nodes {:?}. Use `with_max_steps` to explicitly allow cyclic flows.", cycle_nodes)));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Shared execution logic for [`run`](Self::run) and [`run_safe`](Self::run_safe).
     ///
     /// `on_limit_exceeded` controls behavior when `max_steps` is reached:
@@ -231,6 +285,18 @@ impl Flow {
         mut store: SharedStore,
         safe: bool,
     ) -> Result<SharedStore, AgentFlowError> {
+        if let Err(e) = self.validate() {
+            if safe {
+                return Err(e);
+            } else {
+                store.write().await.insert(
+                    "error".to_string(),
+                    serde_json::Value::String(e.to_string()),
+                );
+                return Ok(store);
+            }
+        }
+
         let mut current_node_name = match self.start_node.as_deref() {
             Some(name) => name.to_string(),
             None => return Ok(store),

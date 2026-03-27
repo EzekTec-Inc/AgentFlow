@@ -69,7 +69,13 @@ impl RpiWorkflow {
     /// Create an empty `RpiWorkflow`. Register nodes with the `with_*` builder
     /// methods before calling [`run`](Self::run).
     pub fn new() -> Self {
-        Self { flow: Flow::new() }
+        Self { flow: Flow::new().with_max_steps(30) }
+    }
+
+    /// Set the maximum number of node executions to prevent infinite loops.
+    pub fn with_max_steps(mut self, limit: usize) -> Self {
+        self.flow = self.flow.with_max_steps(limit);
+        self
     }
 
     /// Register the **Research** node.

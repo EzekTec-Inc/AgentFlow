@@ -5,7 +5,6 @@ use agentflow::utils::tool::create_tool_node;
 use rig::client::CompletionClient;
 use rig::completion::Prompt;
 use rig::client::ProviderClient;
-use rig::completion::Prompt;
 use rig::providers::openai::Client;
 use serde_json::Value;
 use std::collections::HashMap;
