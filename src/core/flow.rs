@@ -20,9 +20,9 @@ use tracing::{debug, info, instrument, warn};
 ///
 /// # Cycle prevention
 ///
-/// Use [`with_max_steps`](Self::with_max_steps) to cap the total number of node
-/// executions. Choose [`run`](Self::run) (writes `"error"` key on limit) or
-/// [`run_safe`](Self::run_safe) (returns `Err`) depending on whether you need
+/// Use [`Flow::with_max_steps`] to cap the total number of node
+/// executions. Choose [`Flow::run`] (writes `"error"` key on limit) or
+/// [`Flow::run_safe`] (returns `Err`) depending on whether you need
 /// strict error propagation.
 ///
 /// # Example
@@ -151,8 +151,7 @@ impl Flow {
     /// **What it does NOT do:**
     /// - It does **not** add any edges — the node is registered but entirely
     ///   isolated until you call [`add_edge`](Self::add_edge).
-    /// - It does **not** accept a [`ResultNode`](crate::core::node::ResultNode);
-    ///   use [`add_result_node`](Self::add_result_node) for that variant.
+    /// - It does **not** accept a [`ResultNode`]; use [`add_result_node`](Self::add_result_node) for that variant.
     ///
     /// Prefer `with_start` for simple linear flows where the first node is
     /// known at construction time. For more complex graphs, use
