@@ -10,10 +10,7 @@ use tracing::{debug, instrument, warn};
 pub trait TypedNode<T, E>: Send + Sync + DynClone {
     /// Consume `input`, run the node's logic, and return the mutated store
     /// along with an optional transition action.
-    fn call(
-        &self,
-        input: TypedStore<T>,
-    ) -> TypedNodeFuture<'_, T, E>;
+    fn call(&self, input: TypedStore<T>) -> TypedNodeFuture<'_, T, E>;
 }
 dyn_clone::clone_trait_object!(<T, E> TypedNode<T, E>);
 
@@ -47,10 +44,7 @@ where
         F: Fn(TypedStore<T>) -> Fut + Send + Sync + Clone,
         Fut: Future<Output = (TypedStore<T>, Option<E>)> + Send + 'static,
     {
-        fn call(
-            &self,
-            input: TypedStore<T>,
-        ) -> TypedNodeFuture<'_, T, E> {
+        fn call(&self, input: TypedStore<T>) -> TypedNodeFuture<'_, T, E> {
             Box::pin(self.0(input))
         }
     }
