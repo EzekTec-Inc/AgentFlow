@@ -172,6 +172,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut query_flow = Flow::new();
     query_flow.add_node("inject_skill", skill_injector);
     query_flow.add_node("rag_pipeline", rag);
+    query_flow.add_edge("inject_skill", "default", "rag_pipeline");
 
     let query_store = Arc::new(RwLock::new(HashMap::new()));
     query_store.write().await.insert(
