@@ -38,7 +38,7 @@ inquire = "0.9"
 qdrant-client = "1.15.0"
 reqwest = "0.13.2"
 scraper = "0.26"
-docx-rs = "0.4.19"
+docx-rs = "0.4.20"
 schemars = "1.2.1"
 
 [features]
