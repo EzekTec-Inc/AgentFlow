@@ -125,7 +125,7 @@ graph LR
 To test this server, you would typically configure an MCP client (like Claude Desktop or the AgentFlow MCP Client) to run this binary. However, you can compile and run it to verify it builds:
 
 ```bash
-cargo build --example mcp_server
+cargo build --example mcp-server --features "mcp skills"
 ```
 
 *(Note: Running it directly in the terminal will appear to hang because it is waiting for JSON-RPC payloads on stdin).*

@@ -120,6 +120,6 @@ graph TD
 Because this client spawns the `mcp_server` binary as a subprocess, you must ensure the server is built first.
 
 ```bash
-cargo build --example mcp_server
-cargo run --example mcp_client
+cargo build --example mcp-server --features "mcp skills"
+cargo run --example mcp-client --features "mcp skills"
 ```

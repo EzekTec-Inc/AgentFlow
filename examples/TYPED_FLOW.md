@@ -14,7 +14,7 @@ This example demonstrates the `Typed Flow` pattern in AgentFlow.
 3. count. The flow loops through Draft → Critique → Revise until the LLM critic
    approves or the revision limit is reached.
 4. This showcases TypedFlow's key advantage over the HashMap-based Flow: the state 
-   is a plain Rust struct and routing is driven by Enums. No string key lookups, full type safety, and guaranteed enum paths.
+   is a plain Rust struct and routing is driven by enum variants (`Option<E>`). No string key lookups, full type safety, and guaranteed routing paths.
 5. Additionally, the nodes pass state as owned lock-free message passing, eliminating locking contention.
 
 ## Execution diagram
@@ -39,11 +39,37 @@ flowchart TD
 Use the same pattern in your own project like this:
 
 ```rust
-let flow: TypedFlow<Start, Done> = TypedFlow::new()
-    .step(validate_input)
-    .step(enrich_record)
-    .step(persist_record);
+use agentflow::core::typed_flow::{TypedFlow, create_typed_node};
+use agentflow::core::typed_store::TypedStore;
+
+#[derive(Clone)]
+enum Action { Next, Revise }
+
+#[derive(Clone)]
+struct MyState { draft: String, approved: bool }
+
+let draft_node = create_typed_node(|mut store: TypedStore<MyState>| async move {
+    store.inner.draft = "Draft content".into();
+    (store, Some(Action::Next))
+});
+
+let review_node = create_typed_node(|mut store: TypedStore<MyState>| async move {
+    store.inner.approved = true;
+    (store, None) // None halts the flow
+});
+
+let mut flow: TypedFlow<MyState, Action> = TypedFlow::new().with_max_steps(10);
+flow.add_node("draft", draft_node);
+flow.add_node("review", review_node);
+flow.add_edge("draft", Action::Next, "review");
+
+let initial = TypedStore::new(MyState { draft: String::new(), approved: false });
+let result = flow.run(initial).await;
 ```
+
+- Nodes return `(TypedStore<T>, Option<E>)` — `None` halts the flow, `Some(variant)` routes to the registered edge target.
+- State transitions use enum variants registered via `flow.add_edge("from", Action::Variant, "to")`.
+- No `.step()` builder exists — always use `add_node` + `add_edge`.
 
 ### Customization ideas
 

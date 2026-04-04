@@ -43,7 +43,8 @@ src/
 │   ├── parallel.rs      ParallelFlow — fan-out / fan-in
 │   ├── store.rs         Store — ergonomic typed wrapper
 │   ├── typed_store.rs   TypedStore<T>
-│   ├── typed_flow.rs    TypedFlow<T> — compile-time typed state machine
+│   ├── typed_flow.rs    TypedFlow<T, E> — compile-time typed state machine
+│   ├── telemetry.rs     FlowContext — token usage + per-node latency tracking
 │   ├── batch.rs         Batch, ParallelBatch
 │   └── error.rs         AgentFlowError
 ├── patterns/
@@ -78,11 +79,11 @@ pub type SharedStore = Arc<RwLock<HashMap<String, serde_json::Value>>>;
 ### Node Types
 
 ```rust
-// Infallible node
-pub type SimpleNode = Arc<dyn Fn(SharedStore) -> BoxFuture<'static, SharedStore> + Send + Sync>;
+// Infallible node — Box<dyn Node<SharedStore, SharedStore>>
+pub type SimpleNode = Box<dyn Node<SharedStore, SharedStore>>;
 
-// Fallible node
-pub type ResultNode = Arc<dyn Fn(SharedStore) -> BoxFuture<'static, Result<SharedStore, AgentFlowError>> + Send + Sync>;
+// Fallible node — Box<dyn NodeResult<SharedStore, SharedStore>>
+pub type ResultNode = Box<dyn NodeResult<SharedStore, SharedStore>>;
 ```
 
 **Factory functions:**
@@ -130,23 +131,24 @@ let result = flow.run(store).await;
 
 **Routing:** After every node executes, `Flow` removes `store["action"]` under a write lock and finds the matching outgoing edge. No matching edge → flow stops naturally. Consuming the key prevents state leaks across transitions.
 
-**Pre-flight Graph Validation:** Before execution begins, `Flow::validate()` uses `petgraph` (Tarjan's SCC algorithm) to catch typos in edge names and automatically flags accidental infinite routing loops, halting initialization unless `max_steps` is explicitly opted into.
+**Pre-flight Graph Validation:** Before execution begins, `Flow::validate()` — called automatically inside `flow.run()` / `flow.run_safe()` — uses `petgraph` (Tarjan's SCC algorithm) to catch typos in edge names and flag accidental infinite routing loops. Cyclic graphs require `max_steps` to be set explicitly; `Flow::new()` itself never errors.
 
 **Cycle prevention:** `.with_max_steps(n)` explicitly allows cyclic graphs, automatically aborting after `n` node executions.
 
-### TypedFlow\<T\>
+### TypedFlow\<T, E\>
 
-Compile-time typed alternative to `Flow`. State is a plain Rust struct (`T`), and transitions are governed by an Enum (`E`). This ensures no `HashMap` key lookups and guarantees valid routing paths.
+Compile-time typed alternative to `Flow`. State is a plain Rust struct (`T`), and transitions are governed by an enum (`E`). This ensures no `HashMap` key lookups and guarantees valid routing paths at compile time.
 
 Additionally, `TypedFlow` executes via an actor model using lock-free message passing (mpsc channels), meaning nodes own the state without blocking `RwLock` contention.
 
 ```rust
+#[derive(Clone)]
 enum Action { Revise, Next }
 
 let mut flow: TypedFlow<MyState, Action> = TypedFlow::new().with_max_steps(20);
 flow.add_node("draft", create_typed_node(|mut store: TypedStore<MyState>| async move {
-    // ... modify store
-    (store, Some(Action::Revise)) 
+    // ... modify store.inner ...
+    (store, Some(Action::Revise))
 }));
 flow.add_edge("draft", Action::Revise, "revise");
 
@@ -154,7 +156,29 @@ let final_store = flow.run(initial_store).await;
 ```
 
 **Telemetry & Observability:**
-`TypedStore<T>` inherently ships with a `FlowContext` object accessible via `store.context`. As nodes transition, AgentFlow natively times the execution latency of every node step, accumulating the metrics automatically lock-free.
+Every `TypedStore<T>` carries a `context: FlowContext` field. As nodes transition, AgentFlow automatically records per-node execution latency and exposes it via `store.context.node_durations`. Call `store.context.add_tokens(n)` from within a node to accumulate token usage.
+
+### FlowContext
+
+Telemetry context embedded in every `TypedStore<T>` as `store.context`.
+
+```rust
+pub struct FlowContext {
+    pub token_usage: usize,
+    pub start_time: Instant,
+    pub node_durations: HashMap<String, Duration>,
+}
+```
+
+**Key methods:**
+
+| Method | Description |
+|---|---|
+| `add_tokens(n)` | Accumulate LLM token count |
+| `record_node_duration(name, dur)` | Record per-node execution time (called automatically by `TypedFlow`) |
+| `total_elapsed()` | Wall-clock time since flow started |
+
+`TypedFlow::run_internal` automatically calls `record_node_duration` for every node. Callers only need to call `add_tokens` manually when reporting LLM usage from within a node.
 
 ### ParallelFlow
 
@@ -176,13 +200,13 @@ let result = pf.run(initial_store).await;
 ### Batch / ParallelBatch
 
 ```rust
-// Sequential — one item at a time
-let batch = Batch::new(node, items);
-let result = batch.run(store).await;
+// Sequential — one item at a time; items passed via Node::call
+let batch = Batch::new(node);
+let results: Vec<SharedStore> = batch.call(items).await;
 
-// Concurrent — all items at once
-let par = ParallelBatch::new(node, items);
-let result = par.run(store).await;
+// Concurrent — up to `concurrency_limit` items at once (default 10)
+let par = ParallelBatch::new(node).with_concurrency_limit(5);
+let results: Vec<SharedStore> = par.call(items).await;
 ```
 
 ### AgentFlowError
@@ -192,14 +216,15 @@ pub enum AgentFlowError {
     NotFound(String),
     NodeFailure(String),
     Timeout(String),
-    IoError(String),
-    SerdeError(String),
+    Suspended(String),
+    GraphBuildError(String),
     TypeMismatch(String),
+    ExecutionLimitExceeded(String),
     Custom(String),
 }
 ```
 
-Implements `std::error::Error`, `Display`, `From<std::io::Error>`, `From<serde_json::Error>`.
+Implements `std::error::Error`, `Display`, `From<std::io::Error>` (→ `Custom`), `From<serde_json::Error>` (→ `Custom`).
 
 ---
 
@@ -212,14 +237,17 @@ Retry-aware wrapper around any `SimpleNode` or `ResultNode`.
 ```rust
 let agent = Agent::with_retry(node, 3, 500); // 3 attempts, 500 ms delay
 
-// HashMap ergonomic API
-let result: HashMap<String, Value> = agent.decide(input_map).await?;
+// HashMap ergonomic API — infallible, returns plain HashMap
+let result: HashMap<String, Value> = agent.decide(input_map).await;
 
-// SharedStore API
+// SharedStore API — infallible
 let store_out = agent.decide_shared(store).await;
 
-// Fallible — distinguishes Timeout (retryable) from fatal errors
-let result = agent.decide_result(store).await?;
+// Fallible (uses self.node) — distinguishes Timeout (retryable) from fatal errors
+let result = agent.run_result(store).await?;
+
+// Fallible (external node ref) — same retry semantics, separate node argument
+let result = agent.decide_result(store, &my_result_node).await?;
 ```
 
 ### Workflow
@@ -244,7 +272,7 @@ ma.add_agent(agent2);
 let result = ma.run(store).await;
 ```
 
-Merge strategies: `Shared` (one store), `Namespaced` (prefixed keys), `Custom(fn)`.
+Merge strategies: `SharedStore` (one store), `Namespaced` (prefixed keys), `Custom(fn)`.
 
 ### MapReduce
 
@@ -377,7 +405,7 @@ The key is **consumed** (removed) on every transition. This means:
 - There is no state leak from one transition to the next.
 - Routing cycles are only possible if a node explicitly sets `"action"` to loop back.
 
-`TypedFlow` uses transition closures `|&State| -> Option<String>` instead of the store key.
+`TypedFlow` uses enum-based transitions `Option<E>` (a user-defined enum variant) instead of the store key. Nodes return `(TypedStore<T>, Option<E>)` — `None` halts the flow, `Some(variant)` routes to the registered target node.
 
 ---
 
@@ -441,7 +469,7 @@ Feature-gated examples:
 
 - `rust-agentic-skills` and `document-processing` require `--features skills`
 - `mcp-server` requires `--features "mcp skills"`
-- `mcp-client` requires `--features mcp`
+- `mcp-client` requires `--features "mcp skills"`
 - MCP examples currently cover the minimal AgentFlow-native client/server path:
   `initialize`, `tools/list`, and `tools/call`
 

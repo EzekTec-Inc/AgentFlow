@@ -57,9 +57,11 @@ flowchart TD
 | Type | Purpose |
 |------|---------|
 | `SharedStore` | Central `Arc<RwLock<HashMap>>` data bus |
+| `Store` | Ergonomic typed wrapper over `SharedStore` with `get_string`, `require_i64`, etc. |
 | `SimpleNode` / `ResultNode` | Infallible / fallible async node trait objects |
 | `Flow` | Labeled-edge graph executor; routes via `"action"` key |
 | `TypedFlow<T, E>` | Compile-time typed state machine with Enum routing and actor-model execution |
+| `FlowContext` | Telemetry context: tracks token usage, per-node latencies, total elapsed time |
 | `ParallelFlow` | Fan-out N independent flows, fan-in with a merge fn |
 | `StateDiff` | Lockless node output; framework applies under one write lock |
 | `Batch` / `ParallelBatch` | Sequential / concurrent node-over-items execution |
@@ -207,13 +209,13 @@ names are the hyphenated names declared in `Cargo.toml`. For example:
 - Most LLM-backed examples require `OPENAI_API_KEY`.
 - `rust-agentic-skills` and `document-processing` require `--features skills`.
 - `mcp-server` requires `--features "mcp skills"`.
-- `mcp-client` requires `--features mcp` and expects the `mcp-server`
+- `mcp-client` requires `--features "mcp skills"` and expects the `mcp-server`
   example binary to be available.
 - MCP validation behavior: tool input schemas are inferred from `{{placeholder}}`
   arguments in skill definitions. Calls with missing required fields or non-string
   values return `is_error = true` tool results instead of spawning the command.
-- Next MCP phase: expand server protocol coverage with `resources` support before
-  adding matching higher-level client helpers.
+- The MCP server exposes full `resources` support (`resources/list`, `resources/read`,
+  `resources/templates/list`) alongside `tools/list` and `tools/call`.
 
 Build the paired MCP server binary first:
 
@@ -225,6 +227,7 @@ cargo build --example mcp-server --features "mcp skills"
 |---------|-------------|
 | `agent` | Single LLM agent with retry |
 | `async-agent` | Two agents running concurrently |
+| `hitl` | Human-in-the-Loop: suspend flow until external input arrives |
 | `workflow` | Multi-step workflow with human-in-the-loop |
 | `rag` | RAG pipeline (retrieve → generate) |
 | `multi-agent` | Parallel agents, shared store |

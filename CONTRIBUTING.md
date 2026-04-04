@@ -120,7 +120,7 @@ cargo run --example document-processing  --features skills
 
 1. Create `src/patterns/<name>.rs` (or `src/core/<name>.rs` for primitives).
 2. Add `pub mod <name>;` in the parent `mod.rs`.
-3. Re-export from `src/lib.rs` and `src/prelude.rs` if user-facing.
+3. Re-export from the `pub mod prelude` block inside `src/lib.rs` if user-facing.
 4. Add at least one unit test.
 5. Add a corresponding example in `examples/<name>.rs` and register it in `Cargo.toml`.
 6. Create `examples/<NAME>.md` documenting the example (see below).
