@@ -1,5 +1,3 @@
-use crate::core::telemetry::FlowContext;
-
 /// A strongly-typed, async-safe state container for use with [`TypedFlow`].
 ///
 /// `TypedStore<T>` wraps any `T: Send + Sync`, giving
@@ -36,9 +34,9 @@ use crate::core::telemetry::FlowContext;
 ///
 /// #[tokio::main]
 /// async fn main() {
-///     let store = TypedStore::new(MyState { count: 0 });
-///     store.inner.write().await.count += 1;
-///     assert_eq!(store.inner.read().await.count, 1);
+///     let mut store = TypedStore::new(MyState { count: 0 });
+///     store.inner.count += 1;
+///     assert_eq!(store.inner.count, 1);
 /// }
 /// ```
 ///

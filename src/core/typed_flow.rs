@@ -4,7 +4,7 @@ use dyn_clone::DynClone;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use tracing::{debug, info, instrument, warn};
+use tracing::{debug, instrument, warn};
 
 /// Core Node trait for typed state and enum-based routing
 pub trait TypedNode<T, E>: Send + Sync + DynClone {
@@ -13,9 +13,13 @@ pub trait TypedNode<T, E>: Send + Sync + DynClone {
     fn call(
         &self,
         input: TypedStore<T>,
-    ) -> Pin<Box<dyn Future<Output = (TypedStore<T>, Option<E>)> + Send + '_>>;
+    ) -> TypedNodeFuture<'_, T, E>;
 }
 dyn_clone::clone_trait_object!(<T, E> TypedNode<T, E>);
+
+/// Boxed future returned by [`TypedNode::call`].
+pub type TypedNodeFuture<'a, T, E> =
+    Pin<Box<dyn Future<Output = (TypedStore<T>, Option<E>)> + Send + 'a>>;
 
 /// Boxed, type-erased [`TypedNode`] used in a [`TypedFlow`].
 pub type SimpleTypedNode<T, E> = Box<dyn TypedNode<T, E>>;
@@ -46,7 +50,7 @@ where
         fn call(
             &self,
             input: TypedStore<T>,
-        ) -> Pin<Box<dyn Future<Output = (TypedStore<T>, Option<E>)> + Send + '_>> {
+        ) -> TypedNodeFuture<'_, T, E> {
             Box::pin(self.0(input))
         }
     }
@@ -70,8 +74,12 @@ pub struct TypedFlow<T, E> {
     nodes: HashMap<String, SimpleTypedNode<T, E>>,
     edges: HashMap<String, HashMap<E, String>>,
     start_node: Option<String>,
+    /// Maximum number of node executions before the flow is forcibly stopped.
+    /// `None` means unlimited (use with care in graphs that may cycle).
     pub max_steps: Option<usize>,
+    /// Optional hook executed before every node.
     pub pre_node_hook: Option<TypedFlowHookFn<T>>,
+    /// Optional hook executed after every node.
     pub post_node_hook: Option<TypedFlowHookFn<T>>,
 }
 
@@ -79,6 +87,7 @@ impl<T, E> TypedFlow<T, E>
 where
     E: std::hash::Hash + Eq + Clone + Send + Sync + 'static,
 {
+    /// Create a new empty `TypedFlow` with no nodes or edges.
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
@@ -90,11 +99,13 @@ where
         }
     }
 
+    /// Set the maximum number of node executions to prevent infinite loops.
     pub fn with_max_steps(mut self, limit: usize) -> Self {
         self.max_steps = Some(limit);
         self
     }
 
+    /// Set a hook that will be called before every node execution.
     pub fn with_pre_node_hook<F, Fut>(mut self, hook: F) -> Self
     where
         F: Fn(&str, TypedStore<T>) -> Fut + Send + Sync + 'static,
@@ -106,6 +117,7 @@ where
         self
     }
 
+    /// Set a hook that will be called after every node execution.
     pub fn with_post_node_hook<F, Fut>(mut self, hook: F) -> Self
     where
         F: Fn(&str, TypedStore<T>) -> Fut + Send + Sync + 'static,
@@ -117,6 +129,7 @@ where
         self
     }
 
+    /// Register a typed node. The **first** node added becomes the start node.
     pub fn add_node(&mut self, name: &str, node: SimpleTypedNode<T, E>) {
         if self.start_node.is_none() {
             self.start_node = Some(name.to_string());
@@ -124,6 +137,7 @@ where
         self.nodes.insert(name.to_string(), node);
     }
 
+    /// Add a directed edge: when `from` emits `action`, transition to `to`.
     pub fn add_edge(&mut self, from: &str, action: E, to: &str) {
         self.edges
             .entry(from.to_string())
@@ -131,6 +145,8 @@ where
             .insert(action, to.to_string());
     }
 
+    /// Execute the flow from the start node. On `max_steps` exceeded, sets
+    /// `limit_exceeded` on the returned store and halts.
     #[instrument(name = "typed_flow.run", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
     pub async fn run(&self, store: TypedStore<T>) -> TypedStore<T> {
         self.run_internal(store, false)
@@ -138,6 +154,8 @@ where
             .unwrap_or_else(|_| unreachable!())
     }
 
+    /// Execute the flow from the start node. Returns
+    /// `Err(AgentFlowError::ExecutionLimitExceeded)` if `max_steps` is reached.
     #[instrument(name = "typed_flow.run_safe", skip(self, store), fields(start = self.start_node.as_deref().unwrap_or("none"), max_steps = self.max_steps))]
     pub async fn run_safe(&self, store: TypedStore<T>) -> Result<TypedStore<T>, AgentFlowError> {
         self.run_internal(store, true).await
@@ -190,7 +208,10 @@ where
             steps += 1;
             debug!(step = steps, node = %next_node, "TypedFlow executing node");
 
-            let node = self.nodes.get(&next_node).unwrap();
+            let node = match self.nodes.get(&next_node) {
+                Some(n) => n,
+                None => return Ok(current_store),
+            };
 
             if let Some(hook) = &self.pre_node_hook {
                 current_store = hook(&next_node, current_store).await;

@@ -248,7 +248,10 @@ impl Flow {
         }
 
         for (from_node, actions) in &self.edges {
-            let from_idx = *node_indices.get(from_node.as_str()).unwrap();
+            let from_idx = match node_indices.get(from_node.as_str()) {
+                Some(idx) => *idx,
+                None => continue,
+            };
             for (action, to_node) in actions {
                 if let Some(&to_idx) = node_indices.get(to_node.as_str()) {
                     graph.add_edge(from_idx, to_idx, action.as_str());
@@ -267,7 +270,7 @@ impl Flow {
                 if scc.len() > 1 || (scc.len() == 1 && graph.contains_edge(scc[0], scc[0])) {
                     let mut cycle_nodes = scc
                         .iter()
-                        .map(|idx| *graph.node_weight(*idx).unwrap())
+                        .filter_map(|idx| graph.node_weight(*idx).copied())
                         .collect::<Vec<_>>();
                     cycle_nodes.sort();
                     return Err(AgentFlowError::GraphBuildError(format!("Infinite cycle detected involving nodes {:?}. Use `with_max_steps` to explicitly allow cyclic flows.", cycle_nodes)));

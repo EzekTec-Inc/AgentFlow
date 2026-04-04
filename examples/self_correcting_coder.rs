@@ -73,7 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .prompt(&prompt)
                     .await
                     .unwrap_or_else(|e| format!("// Error: {}", e));
-                
+
                 // Remove markdown formatting if the LLM adds it anyway
                 let code = code
                     .replace("```rust\n", "")
