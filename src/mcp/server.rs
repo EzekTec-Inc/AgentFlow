@@ -3,8 +3,8 @@ use crate::skills::Skill;
 use rmcp::{
     handler::server::ServerHandler,
     model::{
-        AnnotateAble, CallToolRequestParam, CallToolResult, Content, ListResourceTemplatesResult,
-        ListResourcesResult, ListToolsResult, RawResource, ReadResourceRequestParam,
+        AnnotateAble, CallToolRequestParams, CallToolResult, Content, ListResourceTemplatesResult,
+        ListResourcesResult, ListToolsResult, RawResource, ReadResourceRequestParams,
         ReadResourceResult, Resource, ResourceContents, ServerCapabilities, ServerInfo, Tool,
     },
     service::RequestContext,
@@ -91,23 +91,16 @@ impl McpServer {
 
 impl ServerHandler for McpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities {
-                resources: Some(Default::default()),
-                tools: Some(Default::default()),
-                ..ServerCapabilities::default()
-            },
-            server_info: rmcp::model::Implementation {
-                name: self.name.clone(),
-                version: self.version.clone(),
-            },
-            ..ServerInfo::default()
-        }
+        let mut capabilities = ServerCapabilities::default();
+        capabilities.resources = Some(Default::default());
+        capabilities.tools = Some(Default::default());
+        let server_info = rmcp::model::Implementation::new(&self.name, &self.version);
+        ServerInfo::new(capabilities).with_server_info(server_info)
     }
 
     async fn list_tools(
         &self,
-        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, rmcp::ErrorData> {
         let tools: Vec<Tool> = self
@@ -115,13 +108,12 @@ impl ServerHandler for McpServer {
             .iter()
             .flat_map(|skill| skill.tools.iter().flatten())
             .map(|tool| {
-                let description = tool.description.clone().map(Cow::Owned);
-                Tool {
-                    name: Cow::Owned(tool.name.clone()),
+                let description = tool.description.clone().map(Cow::<str>::Owned);
+                Tool::new_with_raw(
+                    tool.name.clone(),
                     description,
-                    input_schema: Arc::new(tool_input_schema(tool)),
-                    annotations: None,
-                }
+                    Arc::new(tool_input_schema(tool)),
+                )
             })
             .collect();
 
@@ -131,27 +123,25 @@ impl ServerHandler for McpServer {
 
     async fn list_resources(
         &self,
-        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, rmcp::ErrorData> {
         let resources = build_resources(&self.skills);
         debug!(count = resources.len(), "McpServer resources/list");
-        Ok(ListResourcesResult {
-            resources,
-            next_cursor: None,
-        })
+        Ok(ListResourcesResult::with_all_items(resources))
     }
 
     async fn read_resource(
         &self,
-        request: ReadResourceRequestParam,
+        request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, rmcp::ErrorData> {
         let uri = request.uri.to_string();
         match render_resource_contents(&self.skills, &uri) {
-            Some(text) => Ok(ReadResourceResult {
-                contents: vec![ResourceContents::text(text, request.uri)],
-            }),
+            Some(text) => Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                text,
+                request.uri,
+            )])),
             None => Err(rmcp::ErrorData::resource_not_found(
                 "resource_not_found",
                 Some(json!({ "uri": uri })),
@@ -161,18 +151,15 @@ impl ServerHandler for McpServer {
 
     async fn list_resource_templates(
         &self,
-        _request: Option<rmcp::model::PaginatedRequestParam>,
+        _request: Option<rmcp::model::PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> Result<ListResourceTemplatesResult, rmcp::ErrorData> {
-        Ok(ListResourceTemplatesResult {
-            resource_templates: Vec::new(),
-            next_cursor: None,
-        })
+        Ok(ListResourceTemplatesResult::with_all_items(Vec::new()))
     }
 
     async fn call_tool(
         &self,
-        request: CallToolRequestParam,
+        request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let tool_name = request.name.as_ref();

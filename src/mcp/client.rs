@@ -1,7 +1,7 @@
 use crate::core::error::AgentFlowError;
 use rmcp::{
     model::{
-        CallToolRequestParam, ClientInfo, Content, ReadResourceRequestParam, Resource,
+        CallToolRequestParams, ClientInfo, Content, ReadResourceRequestParams, Resource,
         ResourceContents, Tool,
     },
     service::RunningService,
@@ -154,7 +154,7 @@ impl McpClient {
     ) -> Result<McpReadResourceResult, AgentFlowError> {
         let result = self
             .service
-            .read_resource(ReadResourceRequestParam { uri: uri.into() })
+            .read_resource(ReadResourceRequestParams::new(uri))
             .await
             .map_err(|e| AgentFlowError::Custom(format!("MCP resources/read failed: {e}")))?;
 
@@ -185,9 +185,12 @@ impl McpClient {
 
         let result = self
             .service
-            .call_tool(CallToolRequestParam {
-                name: name.into().into(),
-                arguments,
+            .call_tool({
+                let mut params = CallToolRequestParams::new(name.into());
+                if let Some(args) = arguments {
+                    params = params.with_arguments(args);
+                }
+                params
             })
             .await
             .map_err(|e| AgentFlowError::Custom(format!("MCP tools/call failed: {e}")))?;
@@ -253,6 +256,7 @@ impl McpClient {
                 uri,
                 mime_type,
                 text,
+                ..
             } => McpResourceContents::Text {
                 uri,
                 mime_type,
@@ -262,6 +266,7 @@ impl McpClient {
                 uri,
                 mime_type,
                 blob,
+                ..
             } => McpResourceContents::Blob {
                 uri,
                 mime_type,
@@ -272,13 +277,9 @@ impl McpClient {
 }
 
 fn client_info(options: McpClientOptions) -> ClientInfo {
-    ClientInfo {
-        client_info: rmcp::model::Implementation {
-            name: options.client_name,
-            version: options.client_version,
-        },
-        ..ClientInfo::default()
-    }
+    let implementation =
+        rmcp::model::Implementation::new(options.client_name, options.client_version);
+    ClientInfo::new(rmcp::model::ClientCapabilities::default(), implementation)
 }
 
 fn content_to_json(content: Content) -> Value {
