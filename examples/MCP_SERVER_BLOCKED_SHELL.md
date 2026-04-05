@@ -53,25 +53,6 @@ When a client attempts to call `run_shell` with malicious arguments via the MCP 
 
 ```mermaid
 graph TD
-    Boot([Boot]) --> Parse[Skill::from_str
-parse BlockedShellTools YAML
-defines run_shell tool]
-    Parse --> Serve[McpServer::serve
-listen on stdio]
-
-    Serve -->|client calls run_shell| Check{Permission check
-shell commands allowed?}
-    Check -->|no — blocked| Err([Error: tool call rejected
-Permission denied])
-    Check -->|yes| Exec([Execute shell command])
-```
-
-**AgentFlow patterns used:** `McpServer` · `Skill` · Permission enforcement (blocked tool calls)
-
-## Execution diagram
-
-```mermaid
-graph TD
     Boot([Boot]) --> Parse[Skill::parse\nBlockedShellTools YAML\ndefines run_shell tool\ncommand: bash]
     Parse --> Serve[McpServer::new\nBlocked_Shell_Server\nserver.run — listen on stdio]
 
@@ -87,7 +68,7 @@ graph TD
 To test this server, you would typically configure an MCP client to attempt running the `run_shell` tool.
 
 ```bash
-cargo build --example mcp_server_blocked_shell
+cargo build --example mcp_server_blocked_shell --features "mcp skills"
 ```
 
 *(Note: Running it directly in the terminal will appear to hang because it is waiting for JSON-RPC payloads on stdin).*

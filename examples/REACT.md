@@ -9,24 +9,22 @@ This example demonstrates the `ReAct Agent` pattern in AgentFlow.
 
 ## How the example works
 
-1. Real-world ReAct (Reason + Act) agent. The LLM decides each turn whether
-2. to call a tool or emit a final answer. Tool execution is a real shell command
-3. Run with: cargo run --example react
-4. const SYSTEM: &str = r#"You are a reasoning agent. You have one tool:
-5. search(query) — returns a web-search snippet.
-6. .unwrap_or("")
+1. A **reasoner** node calls an LLM with a `SYSTEM` prompt that defines a `search(query)` tool. The LLM either emits `ACTION: search(...)` (wants to call the tool) or a final answer.
+2. The reasoner writes `action = "use_tool"` when a tool call is detected, or writes `"response"` and stops when a final answer is produced.
+3. A **tool_executor** node parses the tool call, simulates a web-search result, writes `"observation"` to the store, and sets `action = "reason"` to loop back.
+4. The cycle repeats until the LLM produces a final answer or `with_max_steps(20)` is reached (2 nodes/cycle → max 10 tool calls).
 
 ## Execution diagram
 
 ```mermaid
 flowchart TD
-    A[Question] --> B[Reason step]
-    B --> C{Need action?}
-    C -->|yes| D[Call tool]
-    D --> E[Observation]
-    E --> B
-    C -->|no| F[Final answer]
+    A[Question in store] --> B[reasoner node\nLLM: reason or use_tool?]
+    B -->|use_tool| C[tool_executor node\nparses ACTION: search\nwrites observation to store]
+    C -->|reason| B
+    B -->|no action — final answer| D([response written to store\nflow terminates])
 ```
+
+**AgentFlow patterns used:** `Flow` · `create_node` · `with_max_steps(20)` · ReAct cycle via `add_edge("reasoner", "use_tool", "tool_executor")` + `add_edge("tool_executor", "reason", "reasoner")`
 
 ## Key implementation details
 
@@ -40,10 +38,12 @@ flowchart TD
 Use the same pattern in your own project like this:
 
 ```rust
-let react_agent = Workflow::new()
-    .then(reason_node)
-    .then(tool_action_node)
-    .then(observation_node);
+let mut flow = Flow::new().with_max_steps(20);
+flow.add_node("reasoner", reasoner_node);
+flow.add_node("tool_executor", tool_exec_node);
+flow.add_edge("reasoner", "use_tool", "tool_executor");
+flow.add_edge("tool_executor", "reason", "reasoner");
+let result = flow.run(store).await;
 ```
 
 ### Customization ideas

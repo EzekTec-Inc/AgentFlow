@@ -39,10 +39,14 @@ flowchart TD
 Use the same pattern in your own project like this:
 
 ```rust
-let result = orchestrator
-    .delegate("researcher", task.clone()).await?
-    .delegate("analyst", task.clone()).await?
-    .synthesize().await?;
+// Create the orchestrator node (runs research, code, review phases in sequence)
+let orchestrator_node = create_node(move |store: SharedStore| {
+    // ... call each specialist agent in sequence, write results to store
+    Box::pin(async move { store })
+});
+let mut flow = Flow::new();
+flow.add_node("orchestrator", orchestrator_node);
+let result = flow.run(store).await;
 ```
 
 ### Customization ideas
@@ -53,7 +57,7 @@ let result = orchestrator
 ## How to run
 
 ```bash
-cargo run --example orchestrator_multi_agent
+cargo run --example orchestrator-multi-agent
 ```
 
 ## Requirements and notes

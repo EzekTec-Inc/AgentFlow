@@ -71,7 +71,7 @@ let final_store = flow.run_safe(store).await.unwrap();
 ```mermaid
 graph TD
     A([Start]) --> S1[step1 node\nwrites initial data]
-    S1 -->|action: approval_gate| G
+    S1 -->|default edge| G
 
     subgraph HITL["HITL Gate (create_hitl_node)"]
         G{human_approval\nkey present?}

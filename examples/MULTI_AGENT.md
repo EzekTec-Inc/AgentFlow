@@ -39,8 +39,11 @@ flowchart TD
 Use the same pattern in your own project like this:
 
 ```rust
-let team = MultiAgent::new(vec![planner_agent, critic_agent, writer_agent]);
-let result = team.run(task_store).await?;
+let mut multi_agent = MultiAgent::new();
+multi_agent.add_agent(agent1);
+multi_agent.add_agent(agent2);
+multi_agent.add_agent(agent3);
+let result = multi_agent.run(store).await;
 ```
 
 ### Customization ideas
@@ -51,7 +54,7 @@ let result = team.run(task_store).await?;
 ## How to run
 
 ```bash
-cargo run --example multi_agent
+cargo run --example multi-agent
 ```
 
 ## Requirements and notes

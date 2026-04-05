@@ -9,23 +9,31 @@ This example demonstrates the `Rust Agentic Skills` pattern in AgentFlow.
 
 ## How the example works
 
-1. # Example: rust_agentic_skills.rs
-2. Real-world RPI workflow driven by a Skill file and real LLM calls. The skill
-3. defines the agent's persona and instructions. Each RPI phase (Research, Plan,
-4. Domain: generating a Rust CLI tool from a spec using the Skill system.
-5. Run with: cargo run --example rust-agentic-skills --features skills
-6. println!("=== Rust Agentic Skills ===\n");
+1. A `Skill` is loaded from a YAML frontmatter block (embedded in the source) using `Skill::parse()`. The skill defines the agent's persona and instructions.
+2. Four `RpiWorkflow` phase nodes (research, plan, implement, verify) are created as `create_node` closures. Each reads the skill's `instructions` from the store and uses them as an LLM preamble.
+3. The nodes are wired into an `RpiWorkflow` via `.with_research().with_plan().with_implement().with_verify()`.
+4. After the RPI workflow runs, an additional `Flow` with a single `echo` tool node (from `ToolRegistry`) is run to demonstrate skill-driven tool invocation.
 
 ## Execution diagram
 
 ```mermaid
 flowchart TD
-    A[Load skill definitions] --> B[Build tools/instructions]
-    B --> C[Inject into agent context]
-    C --> D[Agent selects skill]
-    D --> E[Skill executes]
-    E --> F[Agent returns enriched result]
+    A[Parse Skill YAML\nSkill::parse — loads instructions + tools] --> B[RpiWorkflow\n.with_research.with_plan.with_implement.with_verify]
+
+    subgraph RPI["RpiWorkflow (Flow with max_steps=30)"]
+        B --> C[research node\nLLM + skill instructions]
+        C --> D[plan node\nLLM + skill instructions]
+        D --> E[implement node\nLLM + skill instructions]
+        E --> F[verify node\nLLM checks output]
+        F -->|FAIL: reimplement| E
+        F -->|PASS| G([RPI complete])
+    end
+
+    G --> H[tool_flow: Flow\necho tool node via ToolRegistry]
+    H --> I([Final result printed])
 ```
+
+**AgentFlow patterns used:** `RpiWorkflow` · `Skill::parse` · `ToolRegistry` · `create_node`
 
 ## Key implementation details
 
@@ -39,9 +47,17 @@ flowchart TD
 Use the same pattern in your own project like this:
 
 ```rust
-let skill = Skill::from_yaml_file("skills/release_checklist.yaml")?;
-let agent = skill.attach_to(agent);
-let result = agent.call(store).await?;
+use agentflow::skills::Skill;
+use agentflow::patterns::rpi::RpiWorkflow;
+
+let skill = Skill::parse(skill_content)?;
+// Use skill.instructions as LLM preamble in each node
+let workflow = RpiWorkflow::new()
+    .with_research(research_node)
+    .with_plan(plan_node)
+    .with_implement(implement_node)
+    .with_verify(verify_node);
+let final_store = workflow.run(store).await;
 ```
 
 ### Customization ideas
@@ -53,7 +69,7 @@ let result = agent.call(store).await?;
 ## How to run
 
 ```bash
-cargo run --features="skills" --example rust_agentic_skills
+cargo run --features="skills" --example rust-agentic-skills
 ```
 
 ## Requirements and notes

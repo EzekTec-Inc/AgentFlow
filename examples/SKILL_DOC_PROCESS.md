@@ -27,6 +27,7 @@ flowchart TD
 If you want your own example to load reusable capabilities from a file, keep the workflow in code and move the reusable tool instructions into a skill file like this one.
 
 ```rust
-let skill = Skill::from_markdown_file("examples/SKILL_DOC_PROCESS.md")?;
-let pipeline = skill.attach_to(agent_or_workflow);
+// Load the skill definition from the markdown file
+let skill = Skill::from_file("examples/SKILL_DOC_PROCESS.md").await?;
+// Use skill.instructions as LLM preamble and skill.tools for tool nodes
 ```

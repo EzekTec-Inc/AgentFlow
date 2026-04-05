@@ -20,16 +20,20 @@ This example demonstrates the `Orchestrator with Tools` pattern in AgentFlow.
 
 ```mermaid
 flowchart TD
-    A[User request] --> B[Orchestrator]
-    B --> C{Need a tool?}
-    C -->|yes| D[Invoke registered tool]
-    D --> E[Tool result back to orchestrator]
-    C -->|no| F[Reason directly]
-    E --> G[Compose final answer]
-    F --> G
+    A[User request] --> B[Orchestrator node\nLLM decides task + delegates to ReAct]
+
+    subgraph ReAct["Inner ReAct Flow (max 10 steps)"]
+        C[reasoner node\nLLM decides: use_tool or finish]
+        C -->|use_tool| D[tool node\nToolRegistry: sysinfo = uname -a]
+        D -->|default| C
+    end
+
+    B --> C
+    C -->|finish / no action| E[Write summary to store]
+    E --> F([Final answer printed])
 ```
 
-## Key implementation details
+**AgentFlow patterns used:** `Flow` · `create_node` · `ToolRegistry` · Nested ReAct sub-flow
 
 - The example source is `examples/orchestrator_with_tools.rs`.
 - It uses AgentFlow primitives to move data through a store, flow, or higher-level pattern wrapper.
@@ -41,8 +45,22 @@ flowchart TD
 Use the same pattern in your own project like this:
 
 ```rust
-let tools = ToolRegistry::new().register("search_docs", search_docs_tool);
-let orchestrator = Workflow::new().then(decide_node).then(tool_node).then(answer_node);
+// Register allowed tools
+let mut registry = ToolRegistry::new();
+registry.register("sysinfo", "uname", vec!["-a".into()], None);
+
+// Inner ReAct flow: reasoner decides whether to call a tool
+let mut react = Flow::new().with_max_steps(10);
+react.add_node("reasoner", reasoner_node);
+react.add_node("tool", registry.create_node("sysinfo").unwrap());
+react.add_edge("reasoner", "use_tool", "tool");
+react.add_edge("tool", "default", "reasoner");
+
+// Outer orchestrator wraps the ReAct flow as a single node
+let orchestrator = create_node(move |store: SharedStore| {
+    // run the inner react flow, then compose final answer
+    Box::pin(async move { store })
+});
 ```
 
 ### Customization ideas
@@ -54,7 +72,7 @@ let orchestrator = Workflow::new().then(decide_node).then(tool_node).then(answer
 ## How to run
 
 ```bash
-cargo run --example orchestrator_with_tools
+cargo run --example orchestrator-with-tools
 ```
 
 ## Requirements and notes

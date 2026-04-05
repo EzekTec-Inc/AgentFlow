@@ -52,7 +52,7 @@ let typed = parser.run(store).await?;
 ## How to run
 
 ```bash
-cargo run --example structured_output
+cargo run --example structured-output
 ```
 
 ## Requirements and notes

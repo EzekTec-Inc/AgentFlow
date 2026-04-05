@@ -122,5 +122,5 @@ graph TD
 Ensure you have your `OPENAI_API_KEY` set in your environment or `.env` file, then run:
 
 ```bash
-cargo run --example dynamic_orchestrator
+cargo run --example dynamic-orchestrator
 ```
