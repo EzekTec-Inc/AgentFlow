@@ -23,7 +23,7 @@ inquire = { version = "0.9", optional = true }
 qdrant-client = { version = "1.15.0", optional = true }
 anyhow = "1.0.102"
 thiserror = "2"
-rmcp = { version = "1.2.0", features = ["client", "server", "transport-child-process", "transport-io"], optional = true }
+rmcp = { version = "1.6.0", features = ["client", "server", "transport-child-process", "transport-io"], optional = true }
 axum = "0.8.4"
 petgraph = "0.8.3"
 
