@@ -37,7 +37,7 @@ toml = "1.0"
 inquire = "0.9"
 qdrant-client = "1.15.0"
 reqwest = "0.13.2"
-scraper = "0.26"
+scraper = "0.27"
 docx-rs = "0.4.20"
 schemars = "1.2.1"
 
